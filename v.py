@@ -1,8 +1,5 @@
-import streamlit as st
 import pyodbc
 import pandas as pd
-
-st.title("dashboard da hmrubber")
 
 # Conexão com o banco Firebird
 conn_str = (
@@ -83,9 +80,9 @@ ORDER BY N.DATA, N.NOTA
 df = pd.read_sql(query, cnxn)
 
 # Exportando para Excel
+df.to_excel("notas_exportadas.xlsx", index=False)
+print("Exportado com sucesso para 'notas_exportadas.xlsx'")
 
 # Fechando a conexão
 cursor.close()
 cnxn.close()
-
-st.dataframe(df)
