@@ -1,6 +1,5 @@
 import pyodbc
 import pandas as pd
-import datetime
 
 def query(data_in, data_fin):
 
