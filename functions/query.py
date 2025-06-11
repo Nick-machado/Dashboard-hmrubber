@@ -1,20 +1,19 @@
 import pyodbc
 import pandas as pd
+import datetime
 
-# Conexão com o banco Firebird
-conn_str = (
+def query(data_in, data_fin):
+
+    conn_str = (
     "DRIVER=Firebird/InterBase(r) driver;"
     "UID=CONSULTORIA;"
     "PWD=HM#2024!;"
     "DBNAME=mk.rpsolution.com.br/30509:/banco/hmrubber/hmrubber.fdb;"
     "CHARSET=UTF8;"
-)
+)  
+    cnxn = pyodbc.connect(conn_str)
 
-cnxn = pyodbc.connect(conn_str)
-cursor = cnxn.cursor()
-
-# Consulta SQL completa (em uma string de múltiplas linhas)
-query = """
+    query = f"""
 SELECT
   N.DATA AS "Data",
   CAST(N.NOTA AS VARCHAR(10)) || '/' || N.SERIE AS "Nota",
@@ -113,40 +112,26 @@ SELECT
     ) / NULLIF(I.TOTMERC, 0) * 100), 2
   ) AS "Mg.Bruta",
   ABS(I.VALORIPI) AS "Vlr.IPI",
-
-  -- ❗ Colunas restantes da query original
-  N.REGISTRO AS ID_NOTA,
-  N.EMPRESA,
-  P.CIDADE,
-  P.ESTADO,
-  PV.FANTASIA AS NOME_VEND,
-  CT.CATEGORIA,
-  P.ATIVIDADE,
-  R.REGIAO,
-  Q.EQUIPE,
-  I.NFE_CFOP AS CFOP,
-  EXTRACT(MONTH FROM N.DATA) AS MES,
-  EXTRACT(YEAR FROM N.DATA) AS ANO,
-  M.MARCA,
-  G.GRUPO,
-  S.SUBGRUPO,
-  L.DESCRICAO AS LOCAL_ESTOQUE,
-  -COALESCE(I.VALOR_ISS, 0) AS VALOR_ISS,
-  -COALESCE(I.SUBSTRIB, 0) AS SUBSTRIB,
-  -CAST((
-    (I.TOTMERC + COALESCE(I.NFE_VFRETE, 0) + COALESCE(I.NFE_VDESPESAS, 0) + COALESCE(I.NFE_VSEGURO, 0)
-    - COALESCE(I.NFE_VDESC, 0) + I.VALORIPI + I.SUBSTRIB - I.ICMS_ZF - I.PIS_COFINS_ZF)
-    * (N.DESC_COM / 100)
-  ) AS NUMERIC(15,2)) AS DESCCOM,
-  -(
-    COALESCE(I.VALOR_RET_PIS, 0) +
-    COALESCE(I.VALOR_RET_COFINS, 0) +
-    COALESCE(I.VALOR_RET_CSSL, 0) +
-    COALESCE(I.VALOR_IR, 0) +
-    COALESCE(I.VALOR_RET_INSS, 0) +
-    COALESCE(I.VALOR_RET_ISS, 0) +
-    COALESCE(I.VALOR_RET_CPOM, 0)
-  ) AS RETENCOES
+  CT.CATEGORIA AS "Categoria",
+  P.ATIVIDADE AS "Atividade",
+  R.REGIAO AS "Região",
+  G.GRUPO AS "Grupo",
+  S.SUBGRUPO AS "Subgrupo",
+  PV.FANTASIA AS "Vendedor",
+  (
+    SELECT FIRST 1 EQ.EQUIPE
+    FROM VENDEDORES VD
+    JOIN EQUIPES EQ ON EQ.REGISTRO = VD.EQUIPE
+    WHERE VD.PESSOA = N.VENDEDOR
+  ) AS "Equipe",
+  I.NFE_CFOP AS "CFOP",
+  P.ESTADO AS "UF",
+  P.CIDADE AS "Cidade",
+  EXTRACT(MONTH FROM N.DATA) AS "Mês",
+  EXTRACT(YEAR FROM N.DATA) AS "Ano",
+  L.DESCRICAO AS "Estoque",
+  M.MARCA AS "Marca",
+  N.REGISTRO AS "Id"
 
 FROM ITEMNOTA I
 INNER JOIN NOTAS N ON N.REGISTRO = I.NOTA
@@ -160,28 +145,19 @@ INNER JOIN GRUPOS G ON G.REGISTRO = M.GRUPO
 INNER JOIN SUBGRUPOS S ON S.REGISTRO = M.SUBGRUPO
 INNER JOIN LOCAIS_ESTOQUE L ON L.REGISTRO = I.REG_ESTOQUE
 LEFT JOIN PESSOAS PV ON PV.CODIGO = N.VENDEDOR
-LEFT JOIN FRETE_COMPRAS F ON F.REG_NFE = N.REGISTRO
 LEFT JOIN CATEGORIAS CT ON CT.REGISTRO = C.CATEGORIA
-LEFT JOIN VENDEDORES V ON (V.PESSOA = N.VENDEDOR AND V.EMPRESA = 3)
 LEFT JOIN VENDAS_REGIAO R ON R.REGISTRO = C.ID_REGIAO
-LEFT JOIN EQUIPES Q ON Q.REGISTRO = V.EQUIPE
 
-WHERE 
+WHERE
   N.EMPRESA = 1
   AND N.SITUACAO = 'N'
-  AND N.DATA BETWEEN '2025-06-01' AND CURRENT_DATE
-  AND T.FLAG_TIPO = 'V'
+  AND N.DATA BETWEEN '{data_in}' AND '{data_fin}'
+  AND T.FLAG_TIPO IN ('V', 'D')
 
 ORDER BY N.DATA, N.NOTA;
 """
 
-# Executando a consulta
-df = pd.read_sql(query, cnxn)
-
-# Exportando para Excel
-df.to_excel("notas_exportadas.xlsx", index=False)
-print("Exportado com sucesso para 'notas_exportadas.xlsx'")
-
-# Fechando a conexão
-cursor.close()
-cnxn.close()
+# 7) Puxa o DataFrame e exibe
+    df = pd.read_sql(query, cnxn)
+    df['Data'] = pd.to_datetime(df['Data']).dt.date
+    return df
