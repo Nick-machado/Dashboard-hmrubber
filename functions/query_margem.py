@@ -1,16 +1,18 @@
 import pyodbc
 import pandas as pd
-import datetime
+import json
 
-def query(data_in, data_fin):
-
+# ===================================================================
+# Helper: executa a query parametrizada por empresa e tipo de movimento
+# ===================================================================
+def run_query(data_in, data_fin, empresa_id, flag_tipo):
     conn_str = (
-    "DRIVER=Firebird/InterBase(r) driver;"
-    "UID=CONSULTORIA;"
-    "PWD=HM#2024!;"
-    "DBNAME=mk.rpsolution.com.br/30509:/banco/hmrubber/hmrubber.fdb;"
-    "CHARSET=UTF8;"
-)  
+        "DRIVER=Firebird/InterBase(r) driver;"
+        "UID=CONSULTORIA;"
+        "PWD=HM#2024!;"
+        "DBNAME=mk.rpsolution.com.br/30509:/banco/hmrubber/hmrubber.fdb;"
+        "CHARSET=UTF8;"
+    )
     cnxn = pyodbc.connect(conn_str)
 
     query = f"""
@@ -149,15 +151,36 @@ LEFT JOIN CATEGORIAS CT ON CT.REGISTRO = C.CATEGORIA
 LEFT JOIN VENDAS_REGIAO R ON R.REGISTRO = C.ID_REGIAO
 
 WHERE
-  N.EMPRESA = 1
+  N.EMPRESA = {empresa_id}
   AND N.SITUACAO = 'N'
   AND N.DATA BETWEEN '{data_in}' AND '{data_fin}'
-  AND T.FLAG_TIPO IN ('V', 'D')
+  AND T.FLAG_TIPO IN ('{flag_tipo}')
 
 ORDER BY N.DATA, N.NOTA;
 """
-
-# 7) Puxa o DataFrame e exibe
     df = pd.read_sql(query, cnxn)
     df['Data'] = pd.to_datetime(df['Data']).dt.date
     return df
+
+# ====================================================
+# Função 1: retorna e salva planilha para FLAG_TIPO 'V'
+# ====================================================
+def gerar_planilha_concatenada(data_in, data_fin):
+    # consulta empresas 1 e 2 para T.FLAG_TIPO = 'V'
+    df1 = run_query(data_in, data_fin, empresa_id=1, flag_tipo='V')
+    df2 = run_query(data_in, data_fin, empresa_id=2, flag_tipo='V')
+    df_total = pd.concat([df1, df2], ignore_index=True)
+    return df_total
+
+# ====================================================
+# Função 2: retorna e salva JSON com somatórios para FLAG_TIPO 'D'
+# ====================================================
+def gerar_json_somatorios(data_in, data_fin):
+    # consulta empresas 1 e 2 para T.FLAG_TIPO = 'D'
+    df1 = run_query(data_in, data_fin, empresa_id=1, flag_tipo='D')
+    df2 = run_query(data_in, data_fin, empresa_id=2, flag_tipo='D')
+    df_total = pd.concat([df1, df2], ignore_index=True)
+    # soma todas as colunas numéricas
+    somas = df_total.select_dtypes(include='number').sum()
+    somas_dict = somas.to_dict()
+    return somas_dict

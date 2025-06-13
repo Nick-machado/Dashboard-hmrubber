@@ -1,10 +1,8 @@
 import streamlit as st
-import pandas as pd
 import datetime
-import plotly.express as px
-from functions.query import query
+from functions.query_margem import gerar_planilha_concatenada as query
+from functions.query_margem import gerar_json_somatorios
 from functions.func_margem import grafico_margem, dataframe_margem
-
 # 1) Guarda hoje e ontem como date corretos
 hoje = datetime.date.today()
 ontem = hoje - datetime.timedelta(days=1)
@@ -24,8 +22,6 @@ with tab1:
     df_estado = dataframe_margem(df, "UF")
     fig_estado = grafico_margem(df_estado, "UF")
     st.plotly_chart(fig_estado, use_container_width=True)
-
-    
 with tab2:
     df_produto = dataframe_margem(df, "Produto")
     fig_produto = grafico_margem(df_produto, "Produto")
@@ -38,3 +34,18 @@ with tab4:
     df_vendedor = dataframe_margem(df, "Vendedor")
     fig_vendedor = grafico_margem(df_vendedor, "Vendedor")
     st.plotly_chart(fig_vendedor, use_container_width=True)
+    
+margem_vendas = df["$ Margem"].sum()
+
+# 5) Gera o JSON de somatórios para devoluções (FLAG_TIPO 'D')
+somatorios = gerar_json_somatorios(data_inicial, data_final)
+
+# 6) Extrai do JSON apenas o item "$ Margem" (ou zero, se não existir)
+margem_devolucoes = somatorios.get("$ Margem", 0)
+
+st.write(round(margem_vendas, 2))
+st.write(round(margem_devolucoes, 2))
+
+# 7) Soma total das margens e exibe
+total_margem = round(margem_vendas - margem_devolucoes, 2)
+st.subheader(f"**Total de Margem Bruta por Produto: R$ {total_margem:,.2f}**")

@@ -1,8 +1,7 @@
 import streamlit as st
-import pyodbc
-import pandas as pd
 import datetime
 from functions.query_margem import gerar_planilha_concatenada as query
+from functions.func_margem import grafico_margem, dataframe_margem
 
 # 1) Guarda hoje e ontem como date corretos
 hoje = datetime.date.today()
@@ -16,5 +15,7 @@ with col2:
     data_final   = st.date_input("Data final", hoje)
 
 df = query(data_inicial, data_final)
-st.dataframe(df)
-st.subheader("a")
+
+df_cliente = dataframe_margem(df, "Cliente")
+fig_cliente = grafico_margem(df_cliente, "Cliente")
+st.plotly_chart(fig_cliente, use_container_width=True)
