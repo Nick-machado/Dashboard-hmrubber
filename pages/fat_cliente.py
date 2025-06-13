@@ -1,6 +1,6 @@
 import streamlit as st
 import datetime
-from functions.query_margem import gerar_planilha_concatenada as query
+from functions.query import gerar_planilha_concatenada as query
 from functions.func_margem import grafico_margem, dataframe_margem
 
 # 1) Guarda hoje e ontem como date corretos
@@ -19,3 +19,8 @@ df = query(data_inicial, data_final)
 df_cliente = dataframe_margem(df, "Cliente")
 fig_cliente = grafico_margem(df_cliente, "Cliente")
 st.plotly_chart(fig_cliente, use_container_width=True)
+
+soma = df["Total NF"].sum()
+st.subheader(f"**Total de Vendas por Cliente: R$ {soma:,.2f}**")
+
+st.subheader("")

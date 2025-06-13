@@ -2,7 +2,8 @@ import streamlit as st
 import pyodbc
 import pandas as pd
 import datetime
-from functions.query_margem import gerar_planilha_concatenada as query
+from functions.query import gerar_planilha_concatenada as query
+
 
 # 1) Guarda hoje e ontem como date corretos
 hoje = datetime.date.today()
@@ -17,4 +18,3 @@ with col2:
 
 df = query(data_inicial, data_final)
 st.dataframe(df)
-st.subheader("a")
