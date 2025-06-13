@@ -1,21 +1,3 @@
-# ================================
-# query_margem.py
-# ================================
-import pyodbc
-import pandas as pd
-
-# Função que executa a consulta com filtro por empresa e tipo de movimento
-def run_query(data_in, data_fin, empresa_id, flag_tipo):
-    conn_str = (
-        "DRIVER=Firebird/InterBase(r) driver;"
-        "UID=CONSULTORIA;"
-        "PWD=HM#2024!;"
-        "DBNAME=mk.rpsolution.com.br/30509:/banco/hmrubber/hmrubber.fdb;"
-        "CHARSET=UTF8;"
-    )
-    cnxn = pyodbc.connect(conn_str)
-
-    query = f"""
 SELECT
   N.DATA AS "Data",
   CAST(N.NOTA AS VARCHAR(10)) || '/' || N.SERIE AS "Nota",
@@ -157,17 +139,3 @@ WHERE
   AND T.FLAG_TIPO = '{flag_tipo}'
 
 ORDER BY N.DATA, N.NOTA;
-    """
-    df = pd.read_sql(query, cnxn)
-    df['Data'] = pd.to_datetime(df['Data']).dt.date
-    return df
-
-
-# ====================================================
-# Função principal com 3 argumentos corretamente
-# ====================================================
-def gerar_planilha_concatenada(data_in, data_fin):
-    df1 = run_query(data_in, data_fin, empresa_id=1, flag_tipo='V')
-    df2 = run_query(data_in, data_fin, empresa_id=2, flag_tipo='V')
-    df_total = pd.concat([df1, df2], ignore_index=True)
-    return df_total
