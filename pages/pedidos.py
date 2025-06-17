@@ -3,6 +3,9 @@ import pyodbc
 import pandas as pd
 import datetime
 from functions.query_ped import run_query as query
+from functions.menu import menu_with_redirect
+
+menu_with_redirect()
 
 # 1) Guarda hoje e ontem como date corretos
 hoje = datetime.date.today()

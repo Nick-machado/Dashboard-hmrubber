@@ -1,8 +1,10 @@
 import streamlit as st
 import datetime
 from functions.query import gerar_planilha_concatenada as query
-from functions.query import gerar_json_somatorios
 from functions.func_margem import grafico_margem, dataframe_margem
+from functions.menu import menu_with_redirect
+
+menu_with_redirect()
 # 1) Guarda hoje e ontem como date corretos
 hoje = datetime.date.today()
 ontem = hoje - datetime.timedelta(days=1)
@@ -37,15 +39,6 @@ with tab4:
     
 margem_vendas = df["$ Margem"].sum()
 
-# 5) Gera o JSON de somatórios para devoluções (FLAG_TIPO 'D')
-somatorios = gerar_json_somatorios(data_inicial, data_final)
-
 # 6) Extrai do JSON apenas o item "$ Margem" (ou zero, se não existir)
-margem_devolucoes = somatorios.get("$ Margem", 0)
 
 st.write(round(margem_vendas, 2))
-st.write(round(margem_devolucoes, 2))
-
-# 7) Soma total das margens e exibe
-total_margem = round(margem_vendas - margem_devolucoes, 2)
-st.subheader(f"**Total de Margem Bruta por Produto: R$ {total_margem:,.2f}**")

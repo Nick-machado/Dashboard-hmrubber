@@ -3,6 +3,9 @@ import pyodbc
 import pandas as pd
 import datetime
 from functions.query import gerar_planilha_concatenada as query
+from functions.menu import menu_with_redirect
+
+menu_with_redirect()
 
 
 # 1) Guarda hoje e ontem como date corretos

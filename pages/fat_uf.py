@@ -5,6 +5,9 @@ import plotly.express as px
 import pandas as pd
 from calendar import monthrange
 from functions.query import gerar_planilha_concatenada as query
+from functions.menu import menu_with_redirect
+
+menu_with_redirect()
 
 st.title("Mapa de Calor - Faturamento por Estado")
 
