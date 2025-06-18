@@ -5,6 +5,7 @@ import datetime
 from functions.query_devo import run_query as query
 from functions.menu import menu_with_redirect
 
+st.set_page_config(layout="wide")
 menu_with_redirect()
 
 # 1) Guarda hoje e ontem como date corretos

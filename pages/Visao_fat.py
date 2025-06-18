@@ -4,7 +4,9 @@ from functions.query import gerar_planilha_concatenada as query
 from functions.func_margem import grafico_margem, dataframe_margem
 from functions.menu import menu_with_redirect
 
+st.set_page_config(layout="wide")
 menu_with_redirect()
+
 # 1) Guarda hoje e ontem como date corretos
 hoje = datetime.date.today()
 ontem = hoje - datetime.timedelta(days=1)

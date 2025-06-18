@@ -7,6 +7,7 @@ from calendar import monthrange
 from functions.query import gerar_planilha_concatenada as query
 from functions.menu import menu_with_redirect
 
+st.set_page_config(layout="wide")
 menu_with_redirect()
 
 st.title("Mapa de Calor - Faturamento por Estado")
