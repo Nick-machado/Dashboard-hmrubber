@@ -1,23 +1,46 @@
+# Dockerfile Corrigido para Dashboard-hmrubber
+# Configurado para SQL Server com Microsoft ODBC Driver 18
 
-# Imagem base
+# Usar Python 3.10 slim baseado em Debian 11
 FROM python:3.10-slim
 
-# Instala dependências do sistema
-RUN apt-get update && \
-    apt-get install -y unixodbc unixodbc-dev libfirebird-dev firebird-dev firebird3.0-utils libfbclient2 && \
-    apt-get clean
-
-# Define diretório de trabalho
+# Definir diretório de trabalho
 WORKDIR /app
 
-# Copia os arquivos do projeto
-COPY . /app
+# Instalar dependências do sistema
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+    build-essential \
+    curl \
+    apt-utils \
+    gnupg2 \
+    unixodbc-dev && \
+    rm -rf /var/lib/apt/lists/* && \
+    pip install --upgrade pip
 
-# Instala dependências Python
+# Adicionar repositório Microsoft para ODBC Driver
+RUN curl https://packages.microsoft.com/keys/microsoft.asc | apt-key add -
+RUN curl https://packages.microsoft.com/config/debian/11/prod.list > /etc/apt/sources.list.d/mssql-release.list
+
+# Atualizar lista de pacotes
+RUN apt-get update
+
+# Instalar Microsoft ODBC Driver 18 for SQL Server
+RUN env ACCEPT_EULA=Y apt-get install -y msodbcsql18
+
+# Verificar instalação do driver
+RUN odbcinst -q -d -n "ODBC Driver 18 for SQL Server"
+
+# Copiar requirements.txt primeiro (para cache do Docker)
+COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Expõe a porta padrão do Streamlit
+# Copiar código da aplicação
+COPY . .
+
+# Expor porta que o Streamlit usa
 EXPOSE 8501
 
-# Comando para rodar o Streamlit
-CMD ["streamlit", "run", "main.py", "--server.port=8501", "--server.address=0.0.0.0"]
+# Comando para executar a aplicação
+CMD ["streamlit", "run", "main.py", "--server.port=8501", "--server.address=0.0.0.0", "--server.headless=true"]
+
