@@ -1,7 +1,11 @@
 import streamlit as st
 import requests
+from dotenv import load_dotenv
+import os
 
-url_login = f"http://localhost:8080/users/login/"
+load_dotenv()
+
+url_login = os.getenv("url_api")
 
 # ───── Funções de Autenticação ─────
 def autenticar_usuario():
@@ -18,7 +22,7 @@ def autenticar_usuario():
         submitted = st.form_submit_button("Log in")
 
     if submitted:
-        url = f"{url_login}{username}/{password}"
+        url = f"{url_login}/users/login/{username}/{password}"
         try:
             resp = requests.get(url)
             if resp.status_code == 200:
@@ -34,7 +38,7 @@ def autenticar_usuario():
             return False, f"Erro na conexão: {e}"
 
 def carregar_dados_usuario(id):
-    url = f"http://localhost:8080/users/{id}"
+    url = f"{url_login}/users/{id}"
     try:
         resp = requests.get(url)
         if resp.status_code == 200:

@@ -2,6 +2,12 @@ import streamlit as st
 import time
 import requests
 from functions.menu import menu_with_redirect
+from dotenv import load_dotenv
+import os
+
+load_dotenv()
+
+url_login = os.getenv("url_api")
 
 st.set_page_config(layout="wide")
 menu_with_redirect()
@@ -19,7 +25,7 @@ def confirmar_alteração(nome, permissoes, id):
         cancelar = st.button("Cancelar", key="cancelar", use_container_width=True, type="secondary")
     
     if confirmar:
-        requests_alterar = requests.patch(f"http://localhost:8080/users/update/{id}", json={
+        requests_alterar = requests.patch(f"{url_login}/users/update/{id}", json={
             "permissoes": permissoes
         })
         if requests_alterar.status_code != 200:
@@ -46,7 +52,7 @@ def deletar_usuario(nome, id):
     with col2:
         cancelar_del = st.button("Cancelar", key="cancelar_deletar", use_container_width=True, type="secondary")
     if confirmar_del:
-        requests_deletar = requests.delete(f"http://localhost:8080/users/delete/{id}")
+        requests_deletar = requests.delete(f"{url_login}/users/delete/{id}")
         if requests_deletar.status_code != 200:
             st.error("Erro ao deletar usuário.")
             time.sleep(2)
@@ -69,7 +75,7 @@ with tab1:
     st.subheader("Adicionar Usuário")
 
     # Buscar permissões
-    response = requests.get("http://localhost:8080/permissions")
+    response = requests.get(f"{url_login}/permissions")
     if response.status_code == 200:
         permissions_data = response.json().get("permissoes", [])
         permissions_list = [perm["nome"] for perm in permissions_data]
@@ -100,7 +106,7 @@ with tab1:
                     "senha": senha,
                     "permissoes": permissoes
                 }
-                response = requests.post("http://localhost:8080/users/add", json=payload)
+                response = requests.post(f"{url_login}/users/add", json=payload)
 
                 if response.status_code == 201:
                     st.success("Usuário adicionado com sucesso!")
@@ -115,7 +121,7 @@ with tab1:
         
 with tab2:
     # Buscar usuários
-    response_users = requests.get("http://localhost:8080/users")
+    response_users = requests.get(f"{url_login}/users")
     if response_users.status_code == 200:
         data_users = response_users.json()
         users = data_users.get("users", [])
@@ -124,7 +130,7 @@ with tab2:
         users = []
 
     # Buscar permissões
-    response_permissions = requests.get("http://localhost:8080/permissions")
+    response_permissions = requests.get(f"{url_login}/permissions")
     if response_permissions.status_code == 200:
         data_permissions = response_permissions.json()
         permissions = data_permissions.get("permissoes", [])
@@ -167,7 +173,7 @@ with tab2:
                 confirmar_alteração(selected_user, sorted(selected_permissions), selected_user_id)
 
 with tab3:
-    response_users = requests.get("http://localhost:8080/users")
+    response_users = requests.get(f"{url_login}/users")
     if response_users.status_code == 200:
         data_users = response_users.json()
         users = data_users.get("users", [])
