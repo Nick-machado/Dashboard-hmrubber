@@ -1,10 +1,9 @@
 #!/usr/bin/env bash
-set -e
+set -ex # Adicionado o 'x' aqui para depuração
 
 echo "📥 Baixando Firebird ODBC driver v3.0..."
 DRIVER_URL="https://github.com/FirebirdSQL/firebird-odbc-driver/releases/download/v3-0-0/OdbcFb-LIB-3.0.0.amd64.tar.gz"
-# Adiciona -v para saída verbosa e 2>&1 para redirecionar erros para a saída padrão
-wget -v "$DRIVER_URL" -O driver.tar.gz 2>&1 || exit 1
+wget -v "$DRIVER_URL" -O driver.tar.gz || exit 1
 
 echo "🔓 Extraindo o driver (.tar.gz )..."
 mkdir -p driver
