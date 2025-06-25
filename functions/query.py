@@ -3,11 +3,11 @@
 # ================================
 import pyodbc
 import pandas as pd
-from functions.connect import get_connection  # Assuming you have a connect.py file with this function
+from functions.connect import get_connection  # Importa a função correta
 
 # Função que executa a consulta com filtro por empresa e tipo de movimento
 def run_query(data_in, data_fin, empresa_id, flag_tipo):
-    cnxn = get_connection()
+    cnxn = get_connection()  # Usa a função get_connection
 
     query = f"""
 SELECT

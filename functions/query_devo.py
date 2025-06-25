@@ -1,20 +1,13 @@
 import pyodbc
 import pandas as pd
-from functions.connect import get_connection  # Assuming you have a connect.py file with this function
+from functions.connect import get_connection  # Adicionado
 import json
 
 # ===================================================================
 # Helper: executa a query parametrizada por empresa e tipo de movimento
 # ===================================================================
 def run_query(data_in, data_fin):
-    conn_str = (
-        "DRIVER=Firebird/InterBase(r) driver;"
-        "UID=CONSULTORIA;"
-        "PWD=HM#2024!;"
-        "DBNAME=mk.rpsolution.com.br/30509:/banco/hmrubber/hmrubber.fdb;"
-        "CHARSET=UTF8;"
-    )
-    cnxn = get_connection()
+    cnxn = get_connection()  # Alterado para usar get_connection
 
     query = f"""
 select
