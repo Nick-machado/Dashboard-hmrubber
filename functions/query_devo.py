@@ -1,5 +1,6 @@
 import pyodbc
 import pandas as pd
+from functions.connect import get_connection  # Assuming you have a connect.py file with this function
 import json
 
 # ===================================================================
@@ -13,7 +14,7 @@ def run_query(data_in, data_fin):
         "DBNAME=mk.rpsolution.com.br/30509:/banco/hmrubber/hmrubber.fdb;"
         "CHARSET=UTF8;"
     )
-    cnxn = pyodbc.connect(conn_str)
+    cnxn = get_connection()
 
     query = f"""
 select
