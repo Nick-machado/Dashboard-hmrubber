@@ -1,5 +1,4 @@
-import streamlit as st
-from functions.menu import menu
+# Configurar ODBC Firebird na inicialização
 import setup_odbc
 
 # Executar configuração apenas uma vez
@@ -8,6 +7,9 @@ if not setup_odbc.setup_firebird_odbc():
     st.error("❌ Erro na configuração do driver ODBC Firebird")
     st.info("Verifique os logs do Heroku para mais detalhes")
     st.stop()
+
+import streamlit as st
+from functions.menu import menu
 
 menu()
 

@@ -1,7 +1,5 @@
 unixodbc
 unixodbc-dev
-firebird3.0-client
-firebird3.0-client-core
 libfbclient2
 firebird-dev
-odbc-firebird
+firebird3.0-common
