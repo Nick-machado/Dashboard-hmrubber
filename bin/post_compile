@@ -2,21 +2,23 @@
 set -e
 
 echo "📥 Baixando Firebird ODBC driver v3.0..."
-wget -q https://github.com/FirebirdSQL/firebird-odbc-driver/releases/download/v3-0-0/OdbcFb-LIB-3.0.0.amd64.gz \
-  -O firebird-odbc-3.0.0.amd64.gz
+DRIVER_URL="https://github.com/FirebirdSQL/firebird-odbc-driver/releases/download/v3-0-0/OdbcFb-LIB-3.0.0.amd64.tar.gz"
+wget -O driver.tar.gz "$DRIVER_URL"
 
-echo "🔓 Descompactando o driver..."
-gunzip firebird-odbc-3.0.0.amd64.gz
+echo "🔓 Extraindo o driver (.tar.gz)..."
+mkdir -p driver
+tar -xzf driver.tar.gz -C driver
 
-echo "📂 Copiando libOdbcFb.so para o diretório de libs do apt..."
-mv OdbcFb-LIB-3.0.0.amd64 ~/app/.apt/usr/lib/libOdbcFb.so
-chmod 755 ~/app/.apt/usr/lib/libOdbcFb.so
+echo "📂 Instalando libOdbcFb.so em /app/.apt/usr/lib..."
+cp driver/libOdbcFb.so /app/.apt/usr/lib/libOdbcFb.so
+chmod 755 /app/.apt/usr/lib/libOdbcFb.so
 
-echo "📝 Registrando em odbcinst.ini..."
-cat <<EOF >> ~/app/.apt/etc/odbcinst.ini
+echo "📝 Registrando o driver no odbcinst.ini..."
+cat >> /app/.apt/etc/odbcinst.ini <<EOF
 [Firebird]
-Description = Firebird ODBC Driver v3.0.0
-Driver = /app/.apt/usr/lib/libOdbcFb.so
+Description = Firebird ODBC Driver v3.0
+Driver      = /app/.apt/usr/lib/libOdbcFb.so
+Setup       = /app/.apt/usr/lib/libOdbcFb.so
 EOF
 
 echo "✅ Driver Firebird ODBC instalado."
