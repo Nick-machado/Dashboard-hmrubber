@@ -49,13 +49,20 @@ def carregar_dados_usuario(id):
         return None
     
 def menu_autenticado():
-    st.session_state['role'] = st.session_state['user_data']['permissoes']
-    st.session_state['username'] = st.session_state['user_data']['nome']
+    # Verificação segura dos dados de usuário
+    user_data = st.session_state.get('user_data')
+    if not user_data or 'permissoes' not in user_data or 'nome' not in user_data:
+        st.error("Erro ao carregar dados do usuário. Faça login novamente.")
+        logout()
+        return
 
-    st.sidebar.subheader("Menu Principal",divider=True)
+    st.session_state['role'] = user_data['permissoes']
+    st.session_state['username'] = user_data['nome']
+
+    st.sidebar.subheader("Menu Principal", divider=True)
     st.sidebar.page_link("main.py", label="Home Page", icon="🏡")
 
-    if "Admin" in st.session_state.role:
+    if "Admin" in st.session_state['role']:
         st.sidebar.subheader("Administração", divider=True)
         st.sidebar.page_link("pages/administrativo.py", label="🛠️ Painel Administrativo")
 
