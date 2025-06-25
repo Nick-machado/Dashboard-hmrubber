@@ -3,6 +3,7 @@
 # ================================
 import pyodbc
 import pandas as pd
+import os
 
 # Função que executa a consulta com filtro por empresa e tipo de movimento
 def run_query(data_in, data_fin, empresa_id, flag_tipo):
@@ -13,6 +14,31 @@ def run_query(data_in, data_fin, empresa_id, flag_tipo):
         "DBNAME=mk.rpsolution.com.br/30509:/banco/hmrubber/hmrubber.fdb;"
         "CHARSET=UTF8;"
     )
+
+    def debug_connection():
+        """Debug detalhado da conexão"""
+        print("🔍 DEBUG CONEXÃO FIREBIRD")
+        print("=" * 40)
+        
+        # Verificar drivers
+        print("📋 Drivers ODBC disponíveis:")
+        for driver in pyodbc.drivers():
+            print(f"  - {driver}")
+        
+        # Verificar variáveis de ambiente
+        print(f"\n🌍 Variáveis de ambiente:")
+        print(f"  ODBCSYSINI: {os.getenv('ODBCSYSINI', 'Não definida')}")
+        print(f"  ODBCINI: {os.getenv('ODBCINI', 'Não definida')}")
+        
+        return True
+
+    # Adicionar antes da linha: cnxn = pyodbc.connect(conn_str)
+    debug_connection()
+
+    # Mostrar string de conexão (sem senha)
+    safe_conn_str = conn_str.replace(conn_str.split('PWD=')[1].split(';')[0], '***')
+    print(f"🔗 String de conexão: {safe_conn_str}")
+
     cnxn = pyodbc.connect(conn_str)
 
     query = f"""
