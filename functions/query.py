@@ -7,7 +7,7 @@ import pandas as pd
 # Função que executa a consulta com filtro por empresa e tipo de movimento
 def run_query(data_in, data_fin, empresa_id, flag_tipo):
     conn_str = (
-        "DRIVER=Firebird/InterBase(r) driver;"
+        "DRIVER={ODBC Driver 17 for SQL Server};"
         "UID=CONSULTORIA;"
         "PWD=HM#2024!;"
         "DBNAME=mk.rpsolution.com.br/30509:/banco/hmrubber/hmrubber.fdb;"
