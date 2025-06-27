@@ -1,6 +1,4 @@
-import pyodbc
 import pandas as pd
-import json
 from functions.connect import get_connection  # Adicionado
 
 # ===================================================================

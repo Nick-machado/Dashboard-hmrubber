@@ -1,7 +1,5 @@
-import pyodbc
 import pandas as pd
 from functions.connect import get_connection  # Adicionado
-import json
 
 # ===================================================================
 # Helper: executa a query parametrizada por empresa e tipo de movimento

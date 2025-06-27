@@ -1,7 +1,6 @@
 # ================================
 # query_margem.py
 # ================================
-import pyodbc
 import pandas as pd
 from functions.connect import get_connection  # Importa a função correta
 
@@ -165,3 +164,8 @@ def gerar_planilha_concatenada(data_in, data_fin):
     df2 = run_query(data_in, data_fin, empresa_id=2, flag_tipo='V')
     df_total = pd.concat([df1, df2], ignore_index=True)
     return df_total
+
+def gerar_soma(data_in, data_fin, empresa_id, flag_tipo):
+    df = run_query(data_in, data_fin, empresa_id, flag_tipo)
+    df_soma = df["Total NF"].sum()
+    return df_soma
