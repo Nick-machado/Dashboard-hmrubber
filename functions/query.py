@@ -177,9 +177,9 @@ ORDER BY N.DATA, N.NOTA;
 # ====================================================
 # Função principal com 3 argumentos corretamente
 # ====================================================
-def gerar_planilha_concatenada(data_in, data_fin):
-    df1 = run_query(data_in, data_fin, empresa_id=1, flag_tipo='V')
-    df2 = run_query(data_in, data_fin, empresa_id=2, flag_tipo='V')
+def gerar_planilha_concatenada(data_in, data_fin, flag_tipo):
+    df1 = run_query(data_in, data_fin, empresa_id=1, flag_tipo=flag_tipo)
+    df2 = run_query(data_in, data_fin, empresa_id=2, flag_tipo=flag_tipo)
     df_total = pd.concat([df1, df2], ignore_index=True)
     return df_total
 

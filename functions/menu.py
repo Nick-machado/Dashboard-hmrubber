@@ -57,16 +57,20 @@ def menu_autenticado():
 
     if "Admin" in st.session_state.role:
         st.sidebar.subheader("Administração", divider=True)
-        st.sidebar.page_link("pages/administrativo.py", label="🛠️ Painel Administrativo")
+        st.sidebar.page_link("pages/administrativo.py", label="Painel Administrativo", icon="🛠️")
 
+    if "Admin" or "Gerente varejo" or "Gerente Indústria" in st.session_state.role:
+        st.sidebar.subheader("Painel do gerente", divider=True)
+        st.sidebar.page_link("pages/metas.py", label="Gerenciador de metas", icon="💵")
+    
     st.sidebar.subheader("Relatórios", divider=True)
-    st.sidebar.page_link("pages/planilha.py", label="📊 Tabela de Vendas")
-    st.sidebar.page_link("pages/margem_cont.py", label="📈 Margem de Contribuição")
-    st.sidebar.page_link("pages/Visao_fat.py", label="🔍 Visão Faturamento")
-    st.sidebar.page_link("pages/fat_cliente.py", label="👥 Faturamento Cliente")
-    st.sidebar.page_link("pages/fat_uf.py", label="🗺️ Faturamento UF")
-    st.sidebar.page_link("pages/devolucao.py", label="📦 Devoluções")
-    st.sidebar.page_link("pages/pedidos.py", label="📝 Pedidos")
+    st.sidebar.page_link("pages/planilha.py", label="Tabela de Vendas", icon="📊")
+    st.sidebar.page_link("pages/margem_cont.py", label="Margem de Contribuição", icon="📈")
+    st.sidebar.page_link("pages/Visao_fat.py", label="Visão Faturamento", icon="🔍")
+    st.sidebar.page_link("pages/fat_cliente.py", label="Faturamento Cliente", icon="👥")
+    st.sidebar.page_link("pages/fat_uf.py", label="Faturamento UF", icon="🗺️")
+    st.sidebar.page_link("pages/devolucao.py", label="Devoluções", icon="📦")
+    st.sidebar.page_link("pages/pedidos.py", label="Pedidos", icon="📝")
 
     st.sidebar.divider()
 
