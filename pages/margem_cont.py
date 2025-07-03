@@ -33,10 +33,10 @@ if "Admin" in user_role:
     else:  # Admin (todas equipes)
         role = "Admin (todas equipes)"
 
-elif "Gerente Indústria" in user_role:
+elif "Gerente Indústria" or "Indústria" in user_role:
     role = "Indústria"
     st.markdown("#### Setor: Indústria")
-elif "Gerente Varejo" in user_role:
+elif "Gerente Varejo" or "Varejo "in user_role:
     st.markdown("#### Setor: Varejo")
     role = st.radio(
         "Selecione o tipo de operação:",
