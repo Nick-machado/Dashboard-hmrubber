@@ -5,7 +5,7 @@ import pandas as pd
 from functions.connect import get_connection  # Importa a função correta
 
 # Função que executa a consulta com filtro por empresa e tipo de movimento
-def run_query(data_in, data_fin, empresa_id, flag_tipo):
+def run_query(data_in, data_fin):
     cnxn = get_connection()  # Usa a função get_connection
 
     query = f"""
@@ -13,6 +13,7 @@ SELECT
   N.DATA AS "Data",
   CAST(N.NOTA AS VARCHAR(10)) || '/' || N.SERIE AS "Nota",
   T.DESCRICAO AS "Tipo Movimento",
+  T.FLAG_TIPO AS "Flag tipo",
   N.CLIENTE AS "Cód. Cli",
   P.RAZAOSOC AS "Cliente",
   M.CODIGO AS "Cód. Prod",
@@ -162,10 +163,10 @@ LEFT JOIN CATEGORIAS CT ON CT.REGISTRO = C.CATEGORIA
 LEFT JOIN VENDAS_REGIAO R ON R.REGISTRO = C.ID_REGIAO
 
 WHERE
-  N.EMPRESA = {empresa_id}
+  N.EMPRESA IN (1, 2)
   AND N.SITUACAO <> 'C'
   AND N.DATA BETWEEN '{data_in}' AND '{data_fin}'
-  AND T.FLAG_TIPO = '{flag_tipo}'
+  AND T.FLAG_TIPO IN ('V', 'D')
 
 ORDER BY N.DATA, N.NOTA;
     """
@@ -177,11 +178,9 @@ ORDER BY N.DATA, N.NOTA;
 # ====================================================
 # Função principal com 3 argumentos corretamente
 # ====================================================
-def gerar_planilha_concatenada(data_in, data_fin, flag_tipo):
-    df1 = run_query(data_in, data_fin, empresa_id=1, flag_tipo=flag_tipo)
-    df2 = run_query(data_in, data_fin, empresa_id=2, flag_tipo=flag_tipo)
-    df_total = pd.concat([df1, df2], ignore_index=True)
-    return df_total
+def gerar_planilha_concatenada(data_in, data_fin):
+    df = run_query(data_in, data_fin)
+    return df
 
 def gerar_soma(data_in, data_fin, empresa_id, flag_tipo):
     df = run_query(data_in, data_fin, empresa_id, flag_tipo)
