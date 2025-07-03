@@ -64,13 +64,14 @@ def menu_autenticado():
         st.sidebar.page_link("pages/metas.py", label="Gerenciador de metas", icon="💵")
     
     st.sidebar.subheader("Relatórios", divider=True)
-    st.sidebar.page_link("pages/planilha.py", label="Tabela de Vendas", icon="📊")
     st.sidebar.page_link("pages/margem_cont.py", label="Margem de Contribuição", icon="📈")
-    st.sidebar.page_link("pages/Visao_fat.py", label="Visão Faturamento", icon="🔍")
-    st.sidebar.page_link("pages/fat_cliente.py", label="Faturamento Cliente", icon="👥")
-    st.sidebar.page_link("pages/fat_uf.py", label="Faturamento UF", icon="🗺️")
-    st.sidebar.page_link("pages/devolucao.py", label="Devoluções", icon="📦")
-    st.sidebar.page_link("pages/pedidos.py", label="Pedidos", icon="📝")
+    if "Admin" in st.session_state.role:
+        st.sidebar.page_link("pages/planilha.py", label="Tabela de Vendas", icon="📊")
+        st.sidebar.page_link("pages/Visao_fat.py", label="Visão Faturamento", icon="🔍")
+        st.sidebar.page_link("pages/fat_cliente.py", label="Faturamento Cliente", icon="👥")
+        st.sidebar.page_link("pages/fat_uf.py", label="Faturamento UF", icon="🗺️")
+        st.sidebar.page_link("pages/devolucao.py", label="Devoluções", icon="📦")
+        st.sidebar.page_link("pages/pedidos.py", label="Pedidos", icon="📝")
 
     st.sidebar.divider()
 

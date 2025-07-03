@@ -5,11 +5,59 @@ from functions.query import run_query
 from functions.menu import menu_with_redirect
 import plotly.graph_objects as go
 
-# ================================
-# Configuração da página e menu
-# ================================
+# ========== CONFIGURAÇÃO DE PÁGINA ==========
 st.set_page_config(layout="wide")
 menu_with_redirect()
+
+# ===========================================
+# LÓGICA DE ROLE/SETOR NO INÍCIO DO CÓDIGO
+# ===========================================
+user_role = st.session_state.get("role", [])
+
+role = None
+
+if "Admin" in user_role:
+    # Adiciona o item especial para ver todos os dados sem filtro
+    setores = ["Indústria", "Varejo", "Admin (todas equipes)"]
+    setor_base = st.selectbox("Selecione o setor", setores)
+    if setor_base == "Varejo":
+        st.markdown("---")
+        role = st.radio(
+            "Selecione o tipo de operação Varejo:",
+            ["Varejo", "Exportação Varejo"],
+            horizontal=True,
+            key="sub_setor_admin"
+        )
+    elif setor_base == "Indústria":
+        role = setor_base  # "Indústria"
+    else:  # Admin (todas equipes)
+        role = "Admin (todas equipes)"
+
+elif "Gerente Indústria" in user_role:
+    role = "Indústria"
+    st.markdown("#### Setor: Indústria")
+elif "Gerente Varejo" in user_role:
+    st.markdown("#### Setor: Varejo")
+    role = st.radio(
+        "Selecione o tipo de operação:",
+        ["Varejo", "Exportação Varejo"],
+        horizontal=True,
+        key="sub_setor_varejo"
+    )
+else:
+    st.error("Acesso negado. Você não tem permissão para visualizar esta página.")
+    st.stop()
+
+# ========================================
+# MAPEAMENTO DE ROLE PARA FILTRO EQUIPE
+# ========================================
+map_role_equipe = {
+    "Indústria": "INDUSTRIAL",
+    "Varejo": "VAREJO",
+    "Exportação Varejo": "EXPORTAÇÃO VAREJO"
+    # "Admin (todas equipes)" não deve ter filtro
+}
+filtro_equipe = map_role_equipe.get(role)
 
 # ================================
 # Função cacheada - apenas pelo ano
@@ -48,9 +96,9 @@ with col2:
     )
 
 if ano == ano_atual:
-    meses_disponiveis = list(range(1, mes_atual + 1))  # até o mês atual
+    meses_disponiveis = list(range(1, mes_atual + 1))
 else:
-    meses_disponiveis = list(range(1, 13))             # todos os meses
+    meses_disponiveis = list(range(1, 13))
 
 with col1:
     st.markdown("### Mês")
@@ -67,6 +115,10 @@ with col1:
 # ================================
 with st.spinner("🔄 Carregando dados... (o banco só será consultado se mudar o ano)"):
     df_periodo = buscar_dados_periodo(ano)
+
+# ========= APLICA FILTRO EQUIPE ===========
+if role != "Admin (todas equipes)" and filtro_equipe is not None:
+    df_periodo = df_periodo[df_periodo['Equipe'] == filtro_equipe]
 
 df_atual = df_periodo[df_periodo['Ano'] == ano]
 prev_year = ano - 1
@@ -88,29 +140,22 @@ total_vendas = df_v['Total NF'].sum()
 total_devolucoes = df_d['Total NF'].sum()
 fat_liquido = total_vendas - total_devolucoes
 
-# Comparativo mês ano anterior (para todas as métricas relevantes)
 vend_prev_mes = df_prev[df_prev['Flag tipo'] == 'V'].groupby('Mês')['Total NF'].sum().get(mes, 0)
 dev_prev_mes = df_prev[df_prev['Flag tipo'] == 'D'].groupby('Mês')['Total NF'].sum().get(mes, 0)
 fat_liq_prev_mes = vend_prev_mes - dev_prev_mes
 delta_fat_liquido = fat_liquido - fat_liq_prev_mes
 
-# NOVO: Cálculo dos deltas para as outras métricas
-# Total Faturado
 delta_total_vendas = total_vendas - vend_prev_mes
-# Total Devoluções
 delta_total_devolucoes = total_devolucoes - dev_prev_mes
 
-# CMV e Margem (ano atual)
 total_cmv = df_v['Vlr.ICM'].sum()
 total_margem = df_v['$ Margem'].sum()
 
-# CMV e Margem do mês correspondente do ano anterior
 total_cmv_prev = df_prev[(df_prev['Mês'] == mes) & (df_prev['Flag tipo'] == 'V')]['Vlr.ICM'].sum()
 total_margem_prev = df_prev[(df_prev['Mês'] == mes) & (df_prev['Flag tipo'] == 'V')]['$ Margem'].sum()
 delta_total_cmv = total_cmv - total_cmv_prev
 delta_total_margem = total_margem - total_margem_prev
 
-# Total de pedidos no mês (sem delta)
 total_pedidos = len(df_mes)
 
 # ================================
