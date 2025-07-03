@@ -59,7 +59,7 @@ def menu_autenticado():
         st.sidebar.subheader("Administração", divider=True)
         st.sidebar.page_link("pages/administrativo.py", label="Painel Administrativo", icon="🛠️")
 
-    if "Admin" or "Gerente varejo" or "Gerente Indústria" in st.session_state.role:
+    if "Admin" in st.session_state.role or "Gerente varejo" in st.session_state.role or "Gerente Indústria" in st.session_state.role:
         st.sidebar.subheader("Painel do gerente", divider=True)
         st.sidebar.page_link("pages/metas.py", label="Gerenciador de metas", icon="💵")
     
