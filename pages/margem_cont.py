@@ -2,6 +2,7 @@ import streamlit as st
 from datetime import datetime, date
 import pandas as pd
 from functions.query import run_query
+from functions.query_devo import run_query as run_query_devo
 from functions.menu import menu_with_redirect
 import plotly.graph_objects as go
 
@@ -17,7 +18,6 @@ user_role = st.session_state.get("role", [])
 role = None
 
 if "Admin" in user_role:
-    # Adiciona o item especial para ver todos os dados sem filtro
     setores = ["Indústria", "Varejo", "Admin (todas equipes)"]
     setor_base = st.selectbox("Selecione o setor", setores)
     if setor_base == "Varejo":
@@ -29,8 +29,8 @@ if "Admin" in user_role:
             key="sub_setor_admin"
         )
     elif setor_base == "Indústria":
-        role = setor_base  # "Indústria"
-    else:  # Admin (todas equipes)
+        role = setor_base
+    else:
         role = "Admin (todas equipes)"
 
 elif "Gerente Indústria" in user_role or "Indústria" in user_role:
@@ -61,18 +61,29 @@ map_role_equipe = {
 filtro_equipe = map_role_equipe.get(role)
 
 # ================================
-# Função cacheada - apenas pelo ano
+# Função cacheada - dados e devolução extra
 # ================================
 @st.cache_data(ttl=300)
-def buscar_dados_periodo(ano: int) -> pd.DataFrame:
-    print(f"Buscando do banco para ano {ano}")  # Debug
+def buscar_dados_periodo(ano: int):
     inicio = date(ano - 1, 1, 1)
     fim = date(ano, 12, 31)
     df = run_query(inicio.strftime("%Y-%m-%d"), fim.strftime("%Y-%m-%d"))
     df['Data'] = pd.to_datetime(df['Data'])
     df['Mês'] = df['Data'].dt.month
     df['Ano'] = df['Data'].dt.year
-    return df
+
+    # Consulta devoluções extras (ajuste a query conforme sua base!)
+    df_devo = run_query_devo(inicio.strftime("%Y-%m-%d"), fim.strftime("%Y-%m-%d"))
+    # Se precisar filtrar por equipe (caso coluna 'Equipe' exista na devolução):
+    if filtro_equipe and filtro_equipe != "Admin (todas equipes)" and 'Equipe' in df_devo.columns:
+        df_devo = df_devo[df_devo['Equipe'] == filtro_equipe]
+    total_devo_extra = df_devo['TOTAL_NF'].sum() if not df_devo.empty else 0
+
+    # Para análise anual do ano anterior e atual
+    df_devo['Mês'] = pd.to_datetime(df_devo['DATA']).dt.month
+    df_devo['Ano'] = pd.to_datetime(df_devo['DATA']).dt.year
+
+    return df, df_devo, total_devo_extra
 
 # ================================
 # Filtros de tempo
@@ -115,7 +126,7 @@ with col1:
 # Carregando dados
 # ================================
 with st.spinner("🔄 Carregando dados... (o banco só será consultado se mudar o ano)"):
-    df_periodo = buscar_dados_periodo(ano)
+    df_periodo, df_devo, total_devo_extra = buscar_dados_periodo(ano)
 
 # ========= APLICA FILTRO EQUIPE ===========
 if role != "Admin (todas equipes)" and filtro_equipe is not None:
@@ -127,10 +138,22 @@ df_prev = df_periodo[df_periodo['Ano'] == prev_year]
 df_mes = df_atual[df_atual['Mês'] == mes]
 
 # ========== Função para calcular faturamento líquido mensal ==========
-def calcular_faturamento_liquido(df):
+def calcular_faturamento_liquido(df, df_devo=None, meses_range=None, ano=None):
     vendas = df[df['Flag tipo'] == 'V'].groupby('Mês')['Total NF'].sum()
     devolucoes = df[df['Flag tipo'] == 'D'].groupby('Mês')['Total NF'].sum()
-    return pd.Series({m: vendas.get(m, 0) - devolucoes.get(m, 0) for m in range(1, 13)})
+    fat_liq = pd.Series({m: vendas.get(m, 0) - devolucoes.get(m, 0) for m in range(1, 13)})
+
+    # Se quiser incluir o valor das devoluções "extras" mês a mês:
+    if df_devo is not None and not df_devo.empty:
+        if ano:
+            devo_ano = df_devo[df_devo['Ano'] == ano]
+        else:
+            devo_ano = df_devo
+        devo_mes = devo_ano.groupby('Mês')['TOTAL_NF'].sum()
+        # Só incrementa se mês estiver em meses_range, senão soma total extra ao final
+        for m in range(1, 13):
+            fat_liq[m] += devo_mes.get(m, 0)
+    return fat_liq
 
 # ================================
 # Cálculo de métricas para o mês selecionado
@@ -139,13 +162,22 @@ df_v = df_mes[df_mes['Flag tipo'] == 'V']
 df_d = df_mes[df_mes['Flag tipo'] == 'D']
 total_vendas = df_v['Total NF'].sum()
 total_devolucoes = df_d['Total NF'].sum()
-fat_liquido = total_vendas - total_devolucoes
 
+# Soma as devoluções extras do mês selecionado
+devo_extra_mes = 0
+if not df_devo.empty:
+    devo_extra_mes = df_devo[(df_devo['Ano'] == ano) & (df_devo['Mês'] == mes)]['TOTAL_NF'].sum()
+fat_liquido = total_vendas - total_devolucoes + devo_extra_mes
+
+# Ano anterior, idem:
 vend_prev_mes = df_prev[df_prev['Flag tipo'] == 'V'].groupby('Mês')['Total NF'].sum().get(mes, 0)
 dev_prev_mes = df_prev[df_prev['Flag tipo'] == 'D'].groupby('Mês')['Total NF'].sum().get(mes, 0)
-fat_liq_prev_mes = vend_prev_mes - dev_prev_mes
-delta_fat_liquido = fat_liquido - fat_liq_prev_mes
+devo_extra_mes_prev = 0
+if not df_devo.empty:
+    devo_extra_mes_prev = df_devo[(df_devo['Ano'] == prev_year) & (df_devo['Mês'] == mes)]['TOTAL_NF'].sum()
+fat_liq_prev_mes = vend_prev_mes - dev_prev_mes + devo_extra_mes_prev
 
+delta_fat_liquido = fat_liquido - fat_liq_prev_mes
 delta_total_vendas = total_vendas - vend_prev_mes
 delta_total_devolucoes = total_devolucoes - dev_prev_mes
 
@@ -209,8 +241,8 @@ with st.spinner("📊 Gerando gráfico comparativo..."):
     meses_range = meses_disponiveis
     meses_labels = [meses[m - 1] for m in meses_range]
 
-    fat_prev = calcular_faturamento_liquido(df_prev).loc[meses_range].tolist()
-    fat_sel = calcular_faturamento_liquido(df_atual).loc[meses_range].tolist()
+    fat_prev = calcular_faturamento_liquido(df_prev, df_devo, meses_range, prev_year).loc[meses_range].tolist()
+    fat_sel = calcular_faturamento_liquido(df_atual, df_devo, meses_range, ano).loc[meses_range].tolist()
     fmt_prev = [f"R$ {v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".") for v in fat_prev]
     fmt_sel = [f"R$ {v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".") for v in fat_sel]
 

@@ -11,81 +11,90 @@ conn_str = (
     "CHARSET=UTF8;"
 )
 
-# Datas fixas de 01-06 até 13-06 do ano atual
+# Datas fixas do mês de junho do ano atual
 ano_atual = date.today().year
-data_in_str = f"{ano_atual}-06-01"
-data_fin_str = f"{ano_atual}-06-13"
+data_in_str = f"{ano_atual}-01-01"
+data_fin_str = f"{ano_atual}-07-13"
 
 print(f"Data inicial: {data_in_str}, Data final: {data_fin_str}")
 
 # Conexão
 cnxn = pyodbc.connect(conn_str)
 
-# Consulta SQL com filtro na coluna PROGRAMADO
-query = """
-WITH EstoqueCTE AS (
+# Query parametrizada com f-string
+query = f"""
+WITH MovrecParsed AS (
     SELECT
-        M.REGISTRO AS ID_PRODUTO,
-        M.EMPRESA,
-        M.CODIGO,
-        M.DESCRICAO,
-        SUM(E.QUANTIDADE) AS QUANT_ESTOQUE,
-        SUM(COALESCE(E.RESERVA, 0)) AS QUANT_RESERVADA_ESTOQUE
-    FROM MOV_ESTOQUE E
-    INNER JOIN MATERIAIS M ON M.REGISTRO = E.REG_MATERIAL
-    INNER JOIN LOCAIS_ESTOQUE L ON L.REGISTRO = E.REG_ESTOQUE
-    INNER JOIN EMPRESAS EMP ON EMP.REGISTRO = M.EMPRESA
-    WHERE L.ESTOQUE_DISPONIVEL = 'S'
-      AND L.REGISTRO IN (1,35,129)
-    GROUP BY M.REGISTRO, M.EMPRESA, M.CODIGO, M.DESCRICAO
+        numero,
+        datadesc,
+        SUBSTRING(numero FROM 1 FOR
+            CASE
+                WHEN POSITION('-' IN numero) > 0 THEN POSITION('-' IN numero) - 1
+                ELSE CHAR_LENGTH(numero)
+            END
+        ) AS numero_base_parsed,
+        CAST(SUBSTRING(numero FROM POSITION('-' IN numero) + 1 FOR CHAR_LENGTH(numero)) AS INTEGER) AS parcela_parsed
+    FROM MOVREC
+    WHERE datadesc >= '{ano_atual}-01-01'
 ),
-Reservado AS (
-    SELECT 
-        M.REGISTRO AS ID_PRODUTO,
-        C.EMPRESA,
-        MAX(C.REGISTRO) AS PEDIDO,
-        SUM(I.QUANT) AS QUANT_RESERVADA
-    FROM PEDIDOS C
-    INNER JOIN ITEMPED I ON I.PEDIDO = C.REGISTRO
-    INNER JOIN MATERIAIS M ON M.REGISTRO = I.PRODUTO
-    INNER JOIN EMPRESAS EMP ON EMP.REGISTRO = C.EMPRESA
-    WHERE C.SITUACAO IN ('Liberado', 'Parcial', 'Faturar', 'Bloqueado')
-      AND C.PROGRAMADO BETWEEN ? AND ?
-    GROUP BY M.REGISTRO, C.EMPRESA
+MainData AS (
+    SELECT
+        m.numero,
+        SUM(i.valor * i.quant) AS valor,
+        n.VALORIPI,
+        CAST(c.avg_comissao AS DECIMAL(10,3)) AS comissao,
+        SUBSTRING(m.numero FROM 1 FOR
+            CASE
+                WHEN POSITION('-' IN m.numero) > 0 THEN POSITION('-' IN m.numero) - 1
+                ELSE CHAR_LENGTH(m.numero)
+            END
+        ) AS numero_base,
+        pv.razaosoc vendedor,
+        e.equipe,
+        m.EMPRESA,
+        SUM(CAST((i.valor * i.quant) * (i.desconto / 100) AS DECIMAL(10,2))) AS desconto
+    FROM MOVREC m
+    INNER JOIN empresas emp ON emp.registro = m.empresa
+    INNER JOIN pessoas p ON p.codigo = m.cliente
+    INNER JOIN vendedores ven ON ven.pessoa = m.vendedor
+    INNER JOIN pessoas pv ON pv.codigo = ven.pessoa
+    INNER JOIN equipes e ON e.registro = ven.equipe
+    LEFT JOIN NOTAS n ON n.REGISTRO = m.NOTA
+    INNER JOIN itemnota i ON i.nota = n.REGISTRO
+    INNER JOIN (
+        SELECT
+            m_inner.numero,
+            MIN(i_inner.comissao) AS min_comissao,
+            MAX(i_inner.comissao) AS max_comissao,
+            AVG(i_inner.comissao) AS avg_comissao
+        FROM MOVREC m_inner
+        INNER JOIN NOTAS n_inner ON n_inner.REGISTRO = m_inner.NOTA
+        INNER JOIN itemnota i_inner ON i_inner.nota = n_inner.REGISTRO
+        WHERE m_inner.PAGAMENTO BETWEEN '{data_in_str}' AND '{data_fin_str}'
+        GROUP BY m_inner.numero
+    ) c ON m.numero = c.numero
+    WHERE m.PAGAMENTO BETWEEN '{data_in_str}' AND '{data_fin_str}'
+    GROUP BY 1, 3, 4, 5, 6, 7, 8
 )
-
-SELECT 
-    C.DATA,
-    C.SITUACAO,
-    EMP.RAZAOSOC AS EMPRESA,
-    C.PROGRAMADO,
-    C.REGISTRO AS ID_PEDIDO,
-    V.DESCRICAO AS TIPO_MOVIMENTO,
-    ((I.VALOR - COALESCE(I.DESC_VALOR, 0)) * I.QUANT) AS VALOR_LIQUIDO,
-    ((I.VALOR - COALESCE(I.DESC_VALOR, 0)) * I.QUANT + COALESCE(I.VALORIPI, 0)) AS VALOR_TOTAL_COM_IPI,
-    PV.RAZAOSOC AS VENDEDOR,
-    E.EQUIPE,
-    C.CLIENTE || ' - ' || P.RAZAOSOC AS CLIENTE
-FROM PEDIDOS C
-INNER JOIN ITEMPED I ON I.PEDIDO = C.REGISTRO
-INNER JOIN MATERIAIS_UNIDADES U ON U.REGISTRO = I.REG_UNIDADE
-INNER JOIN MATERIAIS M ON M.REGISTRO = I.PRODUTO
-INNER JOIN MATERIAIS_COMPL MC ON MC.REG_MATERIAL = M.REGISTRO AND MC.REG_EMPRESA = C.EMPRESA
-INNER JOIN TIPO_VENDA V ON V.REGISTRO = I.ID_TIPONOTA
-INNER JOIN EMPRESAS EMP ON EMP.REGISTRO = C.EMPRESA
-INNER JOIN PESSOAS P ON P.CODIGO = C.CLIENTE
-INNER JOIN VENDEDORES VEN ON VEN.PESSOA = C.VENDEDOR
-INNER JOIN PESSOAS PV ON PV.CODIGO = VEN.PESSOA
-INNER JOIN EQUIPES E ON E.REGISTRO = VEN.EQUIPE
-LEFT JOIN EstoqueCTE EC ON M.REGISTRO = EC.ID_PRODUTO AND M.EMPRESA = EC.EMPRESA
-LEFT JOIN Reservado R ON M.REGISTRO = R.ID_PRODUTO AND M.EMPRESA = R.EMPRESA
-WHERE C.SITUACAO IN ('Liberado', 'Parcial', 'Faturar', 'Bloqueado')
-  AND C.PROGRAMADO BETWEEN ? AND ?
+SELECT
+    md.numero,
+    md.valor,
+    md.VALORIPI,
+    MAX(mp.parcela_parsed) AS parcela,
+    md.comissao,
+    md.vendedor,
+    md.equipe,
+    md.empresa,
+    md.desconto
+FROM MainData md
+INNER JOIN MovrecParsed mp ON md.numero_base = mp.numero_base_parsed
+GROUP BY 1,2,3,5,6,7,8,9
 """
 
-# Executando com os 4 parâmetros necessários
-params = [data_in_str, data_fin_str, data_in_str, data_fin_str]
-df = pd.read_sql(query, cnxn, params=params)
+# Se quiser, pode colocar o print(query) aqui para conferir a query gerada
+
+# Executa a query (sem parâmetros adicionais pois as datas já estão no texto)
+df = pd.read_sql(query, cnxn)
 
 # Exporta para Excel
 df.to_excel("pedidos.xlsx", index=False)
