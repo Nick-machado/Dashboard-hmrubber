@@ -59,7 +59,7 @@ def run_query(data_in, data_fin):
 
     WHERE C.DATA >= '{data_in}' 
       AND C.DATA <= '{data_fin}'
-      AND C.SITUACAO IN ('Liberado')
+      AND C.SITUACAO IN ('Liberado', 'Bloqueado', 'Parcial', 'Faturar')
     
     ORDER BY C.DATA, C.REGISTRO, I.REGISTRO
     """
