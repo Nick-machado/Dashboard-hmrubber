@@ -22,7 +22,7 @@ data_final = datetime.date(ano_que_vem, hoje.month, ultimo_dia_mes)
 st.info(f"Período exibido: {data_inicial.strftime('%d/%m/%Y')} até {data_final.strftime('%d/%m/%Y')}")
 
 # Query
-df = query(data_inicial, data_final)
+df = query(data_inicial, data_final, situacoes=None)
 
 if not df.empty:
     situacao_count = df['SITUACAO'].value_counts().reset_index()

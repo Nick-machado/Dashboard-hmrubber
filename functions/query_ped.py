@@ -18,18 +18,24 @@ from functions.connect import get_connection
 # - Mantido filtro de situação 'Liberado'
 # ===================================================================
 
-def run_query(data_in, data_fin):
+def run_query(data_in, data_fin, situacoes):
     """
-    Executa a query de análise de margens com filtro de data
+    Executa a query de análise de margens com filtro de data e situação
     
     Args:
         data_in (str): Data inicial no formato 'YYYY-MM-DD'
         data_fin (str): Data final no formato 'YYYY-MM-DD'
+        situacoes (list, opcional): Lista de situações para filtrar (ex: ['Liberado', 'Bloqueado'])
     
     Returns:
-        DataFrame: Dados dos pedidos no período especificado
+        DataFrame: Dados dos pedidos no período e situações especificados
     """
     cnxn = get_connection()
+
+    # Define o filtro de situações
+    if situacoes is None:
+        situacoes = ['Liberado', 'Bloqueado', 'Parcial', 'Faturar']
+    situacoes_str = ", ".join([f"'{s}'" for s in situacoes])
 
     query = f"""
     SELECT 
@@ -59,7 +65,7 @@ def run_query(data_in, data_fin):
 
     WHERE C.DATA >= '{data_in}' 
       AND C.DATA <= '{data_fin}'
-      AND C.SITUACAO IN ('Liberado', 'Bloqueado', 'Parcial', 'Faturar')
+      AND C.SITUACAO IN ({situacoes_str})
     
     ORDER BY C.DATA, C.REGISTRO, I.REGISTRO
     """
