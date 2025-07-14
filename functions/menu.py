@@ -65,6 +65,7 @@ def menu_autenticado():
     
     st.sidebar.subheader("Relatórios", divider=True)
     st.sidebar.page_link("pages/margem_cont.py", label="Margem de Contribuição", icon="📈")
+    st.sidebar.page_link("pages/clientes.py", label="Clientes", icon="👥")
     if "Admin" in st.session_state.role:
         st.sidebar.page_link("pages/planilha.py", label="Tabela de Vendas", icon="📊")
         st.sidebar.page_link("pages/Visao_fat.py", label="Visão Faturamento", icon="🔍")
