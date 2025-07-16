@@ -1,25 +1,19 @@
 # ================================
 # query_margem.py
 # ================================
-import pyodbc
 import pandas as pd
+from functions.connect import get_connection  # Importa a função correta
 
 # Função que executa a consulta com filtro por empresa e tipo de movimento
-def run_query(data_in, data_fin, empresa_id, flag_tipo):
-    conn_str = (
-        "DRIVER=Firebird/InterBase(r) driver;"
-        "UID=CONSULTORIA;"
-        "PWD=HM#2024!;"
-        "DBNAME=mk.rpsolution.com.br/30509:/banco/hmrubber/hmrubber.fdb;"
-        "CHARSET=UTF8;"
-    )
-    cnxn = pyodbc.connect(conn_str)
+def run_query(data_in, data_fin):
+    cnxn = get_connection()  # Usa a função get_connection
 
     query = f"""
 SELECT
   N.DATA AS "Data",
   CAST(N.NOTA AS VARCHAR(10)) || '/' || N.SERIE AS "Nota",
   T.DESCRICAO AS "Tipo Movimento",
+  T.FLAG_TIPO AS "Flag tipo",
   N.CLIENTE AS "Cód. Cli",
   P.RAZAOSOC AS "Cliente",
   M.CODIGO AS "Cód. Prod",
@@ -28,21 +22,27 @@ SELECT
   CAST((I.TOTMERC / NULLIF(I.QUANT, 0)) AS NUMERIC(15,4)) AS "Valor Unit.",
   -COALESCE(I.NFE_VDESC, 0) AS "Desconto.",
   CAST((-I.QUANT * (I.VALOR * (I.DESCONTO / 100))) AS NUMERIC(15,2)) AS "Total Desc.",
-  (I.TOTMERC + ABS(I.VALORIPI)) AS "Total NF",
+  (I.TOTMERC + ABS(I.VALORIPI) - (I.ICMS_ZF + I.PIS_COFINS_ZF) + I.NFE_VFRETE) AS "Total NF",
   I.TOTMERC AS "Total Merc.",
+  I.NFE_VFRETE AS "Frete+Seg",
   -COALESCE(I.VALORICM, 0) AS "Vlr.ICM",
   I.NFE_VICMSUFDEST AS "Part.Dest.",
   -(I.VALOR_PIS + I.VALOR_COFINS) AS "Vlr.Pis/Cofins",
   -COALESCE((N.VALOR_FRETE_PAGO * (I.TOTMERC / NULLIF(N.TOTMERC, 0))), 0) AS "Vlr.Frete",
   -(((I.TOTMERC - I.ICMS_ZF + I.PIS_COFINS_ZF) * I.COMISSAO) / 100) AS "Vlr.Comissão",
   -(I.ICMS_ZF + I.PIS_COFINS_ZF) AS "Vlr.ZF",
-  (I.TOTMERC + ABS(I.VALORIPI)
-   - ABS(COALESCE(I.VALORICM, 0))
-   - ABS(I.NFE_VICMSUFDEST)
-   - ABS(I.VALOR_PIS + I.VALOR_COFINS)
-   - ABS(COALESCE(N.VALOR_FRETE_PAGO * (I.TOTMERC / NULLIF(N.TOTMERC, 0)), 0))
-   - ABS(((I.TOTMERC - I.ICMS_ZF + I.PIS_COFINS_ZF) * I.COMISSAO) / 100)
-  ) AS "Vlr.Líquido",
+
+  -- CÁLCULO CORRIGIDO DO VALOR LÍQUIDO
+  ROUND((
+    I.TOTMERC
+    - (I.VALOR_PIS + I.VALOR_COFINS)
+    - COALESCE(I.VALORICM, 0)
+    - COALESCE(N.VALOR_FRETE_PAGO * (I.TOTMERC / NULLIF(N.TOTMERC, 0)), 0)
+    - (((I.TOTMERC - I.ICMS_ZF + I.PIS_COFINS_ZF) * I.COMISSAO) / 100)
+    - (I.ICMS_ZF + I.PIS_COFINS_ZF)
+    + I.NFE_VFRETE
+  ), 5) AS "Vlr.Líquido",
+
   -(
     I.QUANT * CAST((
       SELECT FIRST 1 COALESCE(PM.VALOR, 0)
@@ -52,67 +52,77 @@ SELECT
       ORDER BY PM.DATA DESC
     ) AS NUMERIC(15,4))
   ) AS "Vlr.CMV",
+
   (
-    (I.TOTMERC + ABS(I.VALORIPI))
-    - (
-      ABS(COALESCE(I.VALORICM, 0)) +
-      ABS(I.NFE_VICMSUFDEST) +
-      ABS(I.VALOR_PIS + I.VALOR_COFINS) +
-      ABS(COALESCE(N.VALOR_FRETE_PAGO * (I.TOTMERC / NULLIF(N.TOTMERC, 0)), 0)) +
-      ABS(((I.TOTMERC - I.ICMS_ZF + I.PIS_COFINS_ZF) * I.COMISSAO) / 100) +
-      ABS(
-        I.QUANT * CAST((
-          SELECT FIRST 1 COALESCE(PM.VALOR, 0)
-          FROM PRECO_MEDIO_DIA PM
-          WHERE PM.ID_MATERIAL = MC.REGISTRO
-            AND PM.DATA BETWEEN '01/01/2010' AND N.DATA
-          ORDER BY PM.DATA DESC
-        ) AS NUMERIC(15,4))
-      ) +
-      ABS(I.VALORIPI)
-    )
-  ) AS "$ Margem",
   ROUND((
-    (I.TOTMERC + ABS(I.VALORIPI)
-    - (
-      ABS(COALESCE(I.VALORICM, 0)) +
-      ABS(I.NFE_VICMSUFDEST) +
-      ABS(I.VALOR_PIS + I.VALOR_COFINS) +
-      ABS(COALESCE(N.VALOR_FRETE_PAGO * (I.TOTMERC / NULLIF(N.TOTMERC, 0)), 0)) +
-      ABS(((I.TOTMERC - I.ICMS_ZF + I.PIS_COFINS_ZF) * I.COMISSAO) / 100) +
-      ABS(
-        I.QUANT * CAST((
-          SELECT FIRST 1 COALESCE(PM.VALOR, 0)
-          FROM PRECO_MEDIO_DIA PM
-          WHERE PM.ID_MATERIAL = MC.REGISTRO
-            AND PM.DATA BETWEEN '01/01/2010' AND N.DATA
-          ORDER BY PM.DATA DESC
-        ) AS NUMERIC(15,4))
-      ) +
-      ABS(I.VALORIPI)
-    )
-    ) / NULLIF((I.TOTMERC + ABS(I.VALORIPI)), 0) * 100), 2
-  ) AS "Mg.Líq",
+    I.TOTMERC
+    - (I.VALOR_PIS + I.VALOR_COFINS)
+    - COALESCE(I.VALORICM, 0)
+    - COALESCE(N.VALOR_FRETE_PAGO * (I.TOTMERC / NULLIF(N.TOTMERC, 0)), 0)
+    - (((I.TOTMERC - I.ICMS_ZF + I.PIS_COFINS_ZF) * I.COMISSAO) / 100)
+    - (I.ICMS_ZF + I.PIS_COFINS_ZF)
+    + I.NFE_VFRETE
+  ), 5)
+  -
+  (
+    I.QUANT * CAST((
+      SELECT FIRST 1 COALESCE(PM.VALOR, 0)
+      FROM PRECO_MEDIO_DIA PM
+      WHERE PM.ID_MATERIAL = MC.REGISTRO
+        AND PM.DATA BETWEEN '01/01/2010' AND N.DATA
+      ORDER BY PM.DATA DESC
+    ) AS NUMERIC(15,4))
+  )
+) AS "$ Margem",
+
   ROUND((
-    (I.TOTMERC
-    - (
-      ABS(COALESCE(I.VALORICM, 0)) +
-      ABS(I.NFE_VICMSUFDEST) +
-      ABS(I.VALOR_PIS + I.VALOR_COFINS) +
-      ABS(COALESCE(N.VALOR_FRETE_PAGO * (I.TOTMERC / NULLIF(N.TOTMERC, 0)), 0)) +
-      ABS(((I.TOTMERC - I.ICMS_ZF + I.PIS_COFINS_ZF) * I.COMISSAO) / 100) +
-      ABS(
-        I.QUANT * CAST((
-          SELECT FIRST 1 COALESCE(PM.VALOR, 0)
-          FROM PRECO_MEDIO_DIA PM
-          WHERE PM.ID_MATERIAL = MC.REGISTRO
-            AND PM.DATA BETWEEN '01/01/2010' AND N.DATA
-          ORDER BY PM.DATA DESC
-        ) AS NUMERIC(15,4))
-      )
+  (
+    ROUND((
+      I.TOTMERC
+      - (I.VALOR_PIS + I.VALOR_COFINS)
+      - COALESCE(I.VALORICM, 0)
+      - COALESCE(N.VALOR_FRETE_PAGO * (I.TOTMERC / NULLIF(N.TOTMERC, 0)), 0)
+      - (((I.TOTMERC - I.ICMS_ZF + I.PIS_COFINS_ZF) * I.COMISSAO) / 100)
+      - (I.ICMS_ZF + I.PIS_COFINS_ZF)
+      + I.NFE_VFRETE
+    ), 5)
+    -
+    (
+      I.QUANT * CAST((
+        SELECT FIRST 1 COALESCE(PM.VALOR, 0)
+        FROM PRECO_MEDIO_DIA PM
+        WHERE PM.ID_MATERIAL = MC.REGISTRO
+          AND PM.DATA BETWEEN '01/01/2010' AND N.DATA
+        ORDER BY PM.DATA DESC
+      ) AS NUMERIC(15,4))
     )
-    ) / NULLIF(I.TOTMERC, 0) * 100), 2
-  ) AS "Mg.Bruta",
+  ) / NULLIF((I.TOTMERC + ABS(I.VALORIPI) - (I.ICMS_ZF + I.PIS_COFINS_ZF) + I.NFE_VFRETE), 0) * 100
+), 2) AS "Mg.Líq",
+
+  ROUND((
+  (
+    ROUND((
+      I.TOTMERC
+      - (I.VALOR_PIS + I.VALOR_COFINS)
+      - COALESCE(I.VALORICM, 0)
+      - COALESCE(N.VALOR_FRETE_PAGO * (I.TOTMERC / NULLIF(N.TOTMERC, 0)), 0)
+      - (((I.TOTMERC - I.ICMS_ZF + I.PIS_COFINS_ZF) * I.COMISSAO) / 100)
+      - (I.ICMS_ZF + I.PIS_COFINS_ZF)
+      + I.NFE_VFRETE
+    ), 5)
+    -
+    (
+      I.QUANT * CAST((
+        SELECT FIRST 1 COALESCE(PM.VALOR, 0)
+        FROM PRECO_MEDIO_DIA PM
+        WHERE PM.ID_MATERIAL = MC.REGISTRO
+          AND PM.DATA BETWEEN '01/01/2010' AND N.DATA
+        ORDER BY PM.DATA DESC
+      ) AS NUMERIC(15,4))
+    )
+  ) / NULLIF(I.TOTMERC, 0) * 100
+), 2) AS "Mg.Bruta",
+
   ABS(I.VALORIPI) AS "Vlr.IPI",
   CT.CATEGORIA AS "Categoria",
   P.ATIVIDADE AS "Atividade",
@@ -120,12 +130,14 @@ SELECT
   G.GRUPO AS "Grupo",
   S.SUBGRUPO AS "Subgrupo",
   PV.FANTASIA AS "Vendedor",
+
   (
     SELECT FIRST 1 EQ.EQUIPE
     FROM VENDEDORES VD
     JOIN EQUIPES EQ ON EQ.REGISTRO = VD.EQUIPE
     WHERE VD.PESSOA = N.VENDEDOR
   ) AS "Equipe",
+
   I.NFE_CFOP AS "CFOP",
   P.ESTADO AS "UF",
   P.CIDADE AS "Cidade",
@@ -151,10 +163,10 @@ LEFT JOIN CATEGORIAS CT ON CT.REGISTRO = C.CATEGORIA
 LEFT JOIN VENDAS_REGIAO R ON R.REGISTRO = C.ID_REGIAO
 
 WHERE
-  N.EMPRESA = {empresa_id}
-  AND N.SITUACAO = 'N'
+  N.EMPRESA IN (1, 2)
+  AND N.SITUACAO <> 'C'
   AND N.DATA BETWEEN '{data_in}' AND '{data_fin}'
-  AND T.FLAG_TIPO = '{flag_tipo}'
+  AND T.FLAG_TIPO IN ('V', 'D')
 
 ORDER BY N.DATA, N.NOTA;
     """
@@ -167,7 +179,10 @@ ORDER BY N.DATA, N.NOTA;
 # Função principal com 3 argumentos corretamente
 # ====================================================
 def gerar_planilha_concatenada(data_in, data_fin):
-    df1 = run_query(data_in, data_fin, empresa_id=1, flag_tipo='V')
-    df2 = run_query(data_in, data_fin, empresa_id=2, flag_tipo='V')
-    df_total = pd.concat([df1, df2], ignore_index=True)
-    return df_total
+    df = run_query(data_in, data_fin)
+    return df
+
+def gerar_soma(data_in, data_fin, empresa_id, flag_tipo):
+    df = run_query(data_in, data_fin, empresa_id, flag_tipo)
+    df_soma = df["Mg.Líq"].sum()
+    return df_soma

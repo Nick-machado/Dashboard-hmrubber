@@ -1,6 +1,7 @@
 import streamlit as st
 import datetime
 from functions.query import gerar_planilha_concatenada as query
+from functions.query import gerar_soma
 from functions.func_margem import grafico_margem, dataframe_margem
 from functions.menu import menu_with_redirect
 
@@ -39,7 +40,7 @@ with tab4:
     fig_vendedor = grafico_margem(df_vendedor, "Vendedor")
     st.plotly_chart(fig_vendedor, use_container_width=True)
     
-margem_vendas = df["$ Margem"].sum()
+margem_vendas = gerar_soma(data_inicial, data_final)
 
 # 6) Extrai do JSON apenas o item "$ Margem" (ou zero, se não existir)
 

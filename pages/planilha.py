@@ -1,8 +1,8 @@
 import streamlit as st
-import pyodbc
 import pandas as pd
 import datetime
-from functions.query import gerar_planilha_concatenada as query
+from functions.query import run_query as query
+from functions.query import gerar_soma
 from functions.menu import menu_with_redirect
 
 st.set_page_config(layout="wide")
@@ -19,5 +19,16 @@ with col1:
 with col2:
     data_final   = st.date_input("Data final", hoje)
 
-df = query(data_inicial, data_final)
-st.dataframe(df)
+df1 = query(data_inicial, data_final, empresa_id=1, flag_tipo='V')
+
+st.dataframe(df1, use_container_width=True, hide_index=True)
+
+st.write(len(df1.index))
+st.write(round(gerar_soma(data_inicial, data_final, empresa_id=1, flag_tipo='V'), 2))
+
+df2 = query(data_inicial, data_final, empresa_id=2, flag_tipo='V')
+
+st.dataframe(df2, use_container_width=True, hide_index=True)
+
+st.write(len(df2.index))
+st.write(round(gerar_soma(data_inicial, data_final, empresa_id=2, flag_tipo='V'), 2))
