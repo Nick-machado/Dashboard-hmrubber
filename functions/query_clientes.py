@@ -4,7 +4,7 @@ from functions.connect import get_connection  # Adicionado
 # ===================================================================
 # Helper: executa a query parametrizada por empresa e tipo de movimento
 # ===================================================================
-def run_query(data_in, data_fin):
+def run_query():
     cnxn = get_connection()  # Alterado para usar get_connection
     query = f"""
 SELECT 
@@ -45,8 +45,6 @@ LEFT JOIN
     VENDEDORES v ON c.VENDEDOR = v.PESSOA
 LEFT JOIN
     EQUIPES e ON v.EQUIPE = e.REGISTRO
-WHERE 
-    c.ULTCOMPRA BETWEEN '{data_in}' AND '{data_fin}'
 """
     df = pd.read_sql(query, cnxn)
     df['ULTIMA_COMPRA'] = pd.to_datetime(df['ULTIMA_COMPRA']).dt.date

@@ -74,11 +74,11 @@ def aplicar_filtro_equipe(df, filtro_equipe):
 # ========== Cache dados ==========
 @st.cache_data(ttl=600)
 def buscar_clientes_ano(ano):
-    data_in = date(ano - 1, 1, 1)
-    data_fin = date(ano, 12, 31)
-    df = run_query(data_in.strftime("%Y-%m-%d"), data_fin.strftime("%Y-%m-%d"))
-    df['ULTIMA_COMPRA'] = pd.to_datetime(df['ULTIMA_COMPRA'])
-    df['DATA_CADASTRO'] = pd.to_datetime(df['DATA_CADASTRO'])
+    df = run_query()  # agora sem argumentos
+    df['ULTIMA_COMPRA'] = pd.to_datetime(df['ULTIMA_COMPRA'], errors='coerce')
+    df['DATA_CADASTRO'] = pd.to_datetime(df['DATA_CADASTRO'], errors='coerce')
+    # Filtra apenas clientes com compra no ano anterior ou no ano selecionado
+    df = df[df['ULTIMA_COMPRA'].dt.year.isin([ano - 1, ano])]
     df['Mês'] = df['ULTIMA_COMPRA'].dt.month
     df['Ano'] = df['ULTIMA_COMPRA'].dt.year
     return df
@@ -111,7 +111,6 @@ with aba1:
         )
     with st.spinner("🔄 Carregando dados..."):
         df_clientes = buscar_clientes_ano(ano)
-    # Aplica filtro de setor/equipe
     df_clientes = aplicar_filtro_equipe(df_clientes, filtro_equipe)
 
     # Se admin e quiser filtrar por equipe específica:
@@ -126,13 +125,20 @@ with aba1:
         if equipe_admin != "Todas":
             df_clientes = df_clientes[df_clientes['NOME_EQUIPE'] == equipe_admin]
 
-    # Filtrar clientes cadastrados até o último dia do mês escolhido
-    ultimo_dia_mes = datetime(ano, mes, monthrange(ano, mes)[1])
-    df_mes = df_clientes[df_clientes['DATA_CADASTRO'] <= ultimo_dia_mes]
+    # ============================= NOVA LÓGICA DO GRÁFICO =============================
+    # 1. Filtrar apenas clientes que fizeram compra no mês/ano selecionado
+    mask_mes = (
+        (df_clientes['ULTIMA_COMPRA'].dt.year == ano) &
+        (df_clientes['ULTIMA_COMPRA'].dt.month == mes)
+    )
+    df_mes = df_clientes[mask_mes].copy()
 
-    # Classificar clientes: Novo se foi cadastrado no mês/ano escolhido
-    df_mes['TIPO_CLIENTE'] = df_mes['DATA_CADASTRO'].apply(
-        lambda d: "Novo" if (d.year == ano and d.month == mes) else "Recorrente"
+    # 2. Classificar: Novo se DATA_CADASTRO é do mesmo mês/ano da ULTIMA_COMPRA
+    df_mes['TIPO_CLIENTE'] = df_mes.apply(
+        lambda row: "Novo" if (row['DATA_CADASTRO'].year == row['ULTIMA_COMPRA'].year
+                               and row['DATA_CADASTRO'].month == row['ULTIMA_COMPRA'].month)
+        else "Recorrente",
+        axis=1
     )
 
     qtd_novos = (df_mes['TIPO_CLIENTE'] == "Novo").sum()
@@ -197,7 +203,6 @@ with aba2:
         )
     with st.spinner("🔄 Carregando dados..."):
         df_clientes_churn = buscar_clientes_ano(ano_churn)
-    # Aplica filtro de setor/equipe
     df_clientes_churn = aplicar_filtro_equipe(df_clientes_churn, filtro_equipe)
 
     # Se admin e quiser filtrar por equipe específica:
