@@ -1,0 +1,1159 @@
+from functions.menu import menu_with_redirect
+import streamlit as st
+import pandas as pd
+from datetime import datetime, date
+import plotly.express as px
+import plotly.graph_objects as go
+from calendar import monthrange
+from functions.query import run_query
+from functions.query_devo import run_query as run_query_devo
+from functions.query_ped import run_query as run_query_ped
+from functions.func_margem import grafico_margem, dataframe_margem
+from functions.gerar_html_vendas import gerar_html_relatorio_vendas, criar_html_simples_vendas
+import requests
+from dotenv import load_dotenv
+import os
+
+# Carregar variáveis de ambiente para acessar API de metas
+load_dotenv()
+url_api = os.getenv("url_api")
+
+# Tentar importar funções PDF (opcional, se reportlab estiver instalado)
+try:
+    from functions.gerar_pdf_vendas import gerar_pdf_relatorio_vendas, criar_pdf_simples_vendas
+    PDF_DISPONIVEL = True
+except ImportError:
+    PDF_DISPONIVEL = False
+
+st.set_page_config(layout="wide", page_title="Visão Geral de Vendas")
+menu_with_redirect()
+
+st.title("📊 Visão Geral de Vendas")
+
+# ===========================================
+# LÓGICA DE ROLE/SETOR NO INÍCIO DO CÓDIGO
+# ===========================================
+user_role = st.session_state.get("role", [])
+username = st.session_state.get("username", "Usuário Desconhecido")
+
+role = None
+
+if "Admin" in user_role:
+    setores = ["Indústria", "Varejo", "Admin (todas equipes)"]
+    setor_base = st.selectbox("Selecione o setor", setores)
+    if setor_base == "Varejo":
+        st.markdown("---")
+        role = st.radio(
+            "Selecione o tipo de operação Varejo:",
+            ["Varejo", "Exportação Varejo"],
+            horizontal=True,
+            key="sub_setor_admin"
+        )
+    elif setor_base == "Indústria":
+        role = setor_base
+    else:
+        role = "Admin (todas equipes)"
+
+elif "Gerente Indústria" in user_role or "Indústria" in user_role:
+    role = "Indústria"
+    st.markdown("#### Setor: Indústria")
+
+elif "Gerente Varejo" in user_role or "Varejo" in user_role:
+    st.markdown("#### Setor: Varejo")
+    role = st.radio(
+        "Selecione o tipo de operação:",
+        ["Varejo", "Exportação Varejo"],
+        horizontal=True,
+        key="sub_setor_varejo"
+    )
+else:
+    st.error("Acesso negado. Você não tem permissão para visualizar esta página.")
+    st.stop()
+
+# Função para mapear role para setor da API de metas
+def mapear_role_para_setor_meta(role):
+    """Mapeia o role selecionado para o setor correto da API de metas"""
+    if role == "Indústria":
+        return "Indústria"
+    elif role == "Varejo":
+        return "Varejo" 
+    elif role == "Exportação Varejo":
+        return "Exportação Varejo"
+    else:  # Admin (todas equipes)
+        return None  # Não há meta consolidada para todas as equipes
+
+# Função para buscar meta de um mês específico
+@st.cache_data(ttl=300)
+def buscar_meta_mensal(mes, ano, setor):
+    """Busca a meta de um mês específico na API"""
+    if not url_api or not setor:
+        return 0.0
+    
+    try:
+        params = {"mes": mes, "ano": ano, "setor": setor}
+        response = requests.get(f"{url_api}/metas/buscar", params=params)
+        if response.status_code == 200:
+            return float(response.json().get("valor", 0.0))
+    except requests.exceptions.RequestException:
+        pass  # API indisponível, retorna 0
+    return 0.0
+
+# Função para buscar metas anuais
+@st.cache_data(ttl=300)
+def buscar_metas_anuais(ano, setor):
+    """Busca todas as metas de um ano da API"""
+    if not url_api or not setor:
+        return {}
+    
+    try:
+        params = {"ano": ano, "setor": setor}
+        response = requests.get(f"{url_api}/metas/anual", params=params)
+        if response.status_code == 200:
+            dados_api = response.json()
+            metas_dict = dados_api.get("metas", {})
+            # Converter chaves para int e valores para float
+            return {int(k): float(v) for k, v in metas_dict.items()}
+    except requests.exceptions.RequestException:
+        pass  # API indisponível, retorna dict vazio
+    return {}
+
+# ================================
+# Filtros de tempo
+# ================================
+hoje = datetime.now()
+ano_atual = hoje.year
+mes_atual = hoje.month
+anos_disponiveis = list(range(ano_atual - 5, ano_atual + 1))
+meses = [
+    "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
+    "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"
+]
+
+col1, col2 = st.columns([2, 1])
+with col2:
+    st.markdown("### Ano")
+    ano = st.selectbox(
+        "",
+        options=anos_disponiveis,
+        index=anos_disponiveis.index(ano_atual),
+        key="select_ano"
+    )
+
+if ano == ano_atual:
+    meses_disponiveis = list(range(1, mes_atual + 1))
+else:
+    meses_disponiveis = list(range(1, 13))
+
+with col1:
+    st.markdown("### Mês")
+    mes = st.selectbox(
+        "",
+        options=meses_disponiveis,
+        format_func=lambda m: meses[m - 1],
+        index=meses_disponiveis.index(mes_atual) if ano == ano_atual else 0,
+        key="select_mes"
+    )
+
+# ================================
+# Função cacheada - carrega tudo SEM filtro de setor
+# ================================
+@st.cache_data(ttl=300)
+def buscar_dados_periodo(ano: int):
+    inicio = date(ano - 1, 1, 1)
+    fim = date(ano, 12, 31)
+    df = run_query(inicio.strftime("%Y-%m-%d"), fim.strftime("%Y-%m-%d"))
+    df['Data'] = pd.to_datetime(df['Data'])
+    df['Mês'] = df['Data'].dt.month
+    df['Ano'] = df['Data'].dt.year
+
+    df_devo = run_query_devo(inicio.strftime("%Y-%m-%d"), fim.strftime("%Y-%m-%d"))
+    df_devo['Mês'] = pd.to_datetime(df_devo['DATA']).dt.month
+    df_devo['Ano'] = pd.to_datetime(df_devo['DATA']).dt.year
+
+    return df, df_devo
+
+# ================================
+# Carregando todos os dados (sem filtro de setor!)
+# ================================
+with st.spinner("🔄 Carregando dados... (o banco só será consultado se mudar o ano)"):
+    df_periodo_all, df_devo_all = buscar_dados_periodo(ano)
+
+# ========================================
+# Aplique o filtro de setor apenas em RAM
+# ========================================
+if role == "Indústria":
+    filtro_equipe = "INDUSTRIAL"
+elif role == "Varejo":
+    filtro_equipe = "VAREJO"
+elif role == "Exportação Varejo":
+    filtro_equipe = "EXPORTAÇÃO VAREJO"
+else:  # Admin (todas equipes)
+    filtro_equipe = None
+
+# Filtro na principal (query comum)
+if filtro_equipe and 'Equipe' in df_periodo_all.columns:
+    df = df_periodo_all[df_periodo_all['Equipe'] == filtro_equipe]
+else:
+    df = df_periodo_all.copy()
+
+# Filtro na QUERY_DEVO (usando EQUIPE e mesmo valor do filtro_equipe)
+if filtro_equipe and 'EQUIPE' in df_devo_all.columns:
+    df_devo = df_devo_all[df_devo_all['EQUIPE'] == filtro_equipe]
+else:
+    df_devo = df_devo_all.copy()
+
+# ================================
+# Filtros por ano e mês
+# ================================
+df_atual = df[df['Ano'] == ano]
+prev_year = ano - 1
+df_prev = df[df['Ano'] == prev_year]
+df_mes = df_atual[df_atual['Mês'] == mes]
+
+if df_mes.empty:
+    st.warning(f"Não há dados para {meses[mes - 1]} de {ano}.")
+    st.stop()
+
+st.divider()
+
+# ========================
+# KPIS PRINCIPAIS
+# ========================
+st.subheader("📈 Indicadores Principais")
+
+# Filtrar apenas vendas (sem devoluções)
+df_vendas = df_mes[df_mes['Flag tipo'] == 'V']
+df_devolucoes = df_mes[df_mes['Flag tipo'] == 'D'] 
+
+# Cálculos baseados na mesma lógica da margem_cont.py
+total_vendas = df_vendas['Total NF'].sum()
+total_devolucoes_normais = df_devolucoes['Total NF'].sum()
+
+# Devoluções extras (da query_devo)
+df_devo_mes_extra = df_devo[(df_devo['Ano'] == ano) & (df_devo['Mês'] == mes)] if not df_devo.empty else pd.DataFrame()
+devo_extra_mes = df_devo_mes_extra['TOTAL_MERCADORIA'].sum() if not df_devo_mes_extra.empty else 0
+total_devolucoes_completo = total_devolucoes_normais + abs(devo_extra_mes)
+fat_liquido = total_vendas - total_devolucoes_completo
+
+# CMV e Margem
+total_cmv = df_vendas['Vlr.ICM'].sum()
+total_margem = df_vendas['$ Margem'].sum()
+
+# Dados do ano anterior para comparação
+vend_prev_mes = df_prev[df_prev['Flag tipo'] == 'V'].groupby('Mês')['Total NF'].sum().get(mes, 0)
+dev_prev_mes = df_prev[df_prev['Flag tipo'] == 'D'].groupby('Mês')['Total NF'].sum().get(mes, 0)
+devo_extra_mes_prev = df_devo[(df_devo['Ano'] == prev_year) & (df_devo['Mês'] == mes)]['TOTAL_MERCADORIA'].sum() if not df_devo.empty else 0
+total_devolucoes_prev_completo = dev_prev_mes + abs(devo_extra_mes_prev)
+fat_liq_prev_mes = vend_prev_mes - total_devolucoes_prev_completo
+
+total_cmv_prev = df_prev[(df_prev['Mês'] == mes) & (df_prev['Flag tipo'] == 'V')]['Vlr.ICM'].sum()
+total_margem_prev = df_prev[(df_prev['Mês'] == mes) & (df_prev['Flag tipo'] == 'V')]['$ Margem'].sum()
+
+# Cálculo dos deltas
+delta_total_vendas = total_vendas - vend_prev_mes
+delta_total_devolucoes_completo = total_devolucoes_completo - total_devolucoes_prev_completo
+delta_fat_liquido = fat_liquido - fat_liq_prev_mes
+delta_total_cmv = total_cmv - total_cmv_prev
+delta_total_margem = total_margem - total_margem_prev
+
+# Buscar dados de pedidos
+@st.cache_data(ttl=300)
+def buscar_dados_pedidos(ano: int, permissoes: list):
+    inicio = date(ano - 1, 1, 1)
+    fim = date(ano, 12, 31)
+    df_pedidos = run_query_ped(inicio.strftime("%Y-%m-%d"), fim.strftime("%Y-%m-%d"), situacoes=permissoes)
+    df_pedidos['Data'] = pd.to_datetime(df_pedidos['DATA'])
+    df_pedidos['Mês'] = df_pedidos['Data'].dt.month
+    df_pedidos['Ano'] = df_pedidos['Data'].dt.year
+    return df_pedidos
+
+permissoes = ['Encerrado', 'Liberado']
+df_pedidos = buscar_dados_pedidos(ano, permissoes)
+
+# Filtro por datas do mês
+primeiro_dia = date(ano, mes, 1)
+ultimo_dia = date(ano, mes, monthrange(ano, mes)[1])
+df_pedidos_mes = df_pedidos[
+    (df_pedidos['Data'] >= pd.Timestamp(primeiro_dia)) &
+    (df_pedidos['Data'] <= pd.Timestamp(ultimo_dia))
+]
+
+# Filtro por setor/coluna EQUIPE, se necessário
+if filtro_equipe and 'EQUIPE' in df_pedidos_mes.columns:
+    df_pedidos_mes = df_pedidos_mes[df_pedidos_mes['EQUIPE'] == filtro_equipe]
+
+if 'ID_PEDIDO' in df_pedidos_mes.columns:
+    total_pedidos_mes = df_pedidos_mes['ID_PEDIDO'].nunique()
+else:
+    total_pedidos_mes = 0
+
+# Pedidos do ano anterior
+df_pedidos_prev_mes = df_pedidos[
+    (df_pedidos['Data'] >= pd.Timestamp(date(prev_year, mes, 1))) &
+    (df_pedidos['Data'] <= pd.Timestamp(date(prev_year, mes, monthrange(prev_year, mes)[1])))
+]
+if filtro_equipe and 'EQUIPE' in df_pedidos_prev_mes.columns:
+    df_pedidos_prev_mes = df_pedidos_prev_mes[df_pedidos_prev_mes['EQUIPE'] == filtro_equipe]
+
+total_pedidos_prev = df_pedidos_prev_mes['ID_PEDIDO'].nunique() if 'ID_PEDIDO' in df_pedidos_prev_mes.columns else 0
+delta_pedidos = total_pedidos_mes - total_pedidos_prev
+
+col1, col2, col3 = st.columns(3)
+col4, col5, col6 = st.columns(3)
+
+with col1:
+    st.metric(
+        "Total Faturado", 
+        f"R$ {total_vendas:,.2f}",
+        f"R$ {delta_total_vendas:,.2f}",
+        delta_color="normal" if delta_total_vendas >= 0 else "inverse"
+    )
+
+with col2:
+    st.metric(
+        "Total Devoluções", 
+        f"R$ {total_devolucoes_completo:,.2f}",
+        f"R$ {delta_total_devolucoes_completo:,.2f}",
+        delta_color="normal" if delta_total_devolucoes_completo >= 0 else "inverse"
+    )
+
+with col3:
+    st.metric(
+        "Total Faturado Líquido", 
+        f"R$ {fat_liquido:,.2f}", 
+        f"R$ {delta_fat_liquido:,.2f}", 
+        delta_color="normal" if delta_fat_liquido >= 0 else "inverse"
+    )
+
+with col4:
+    st.metric(
+        "Total CMV", 
+        f"R$ {total_cmv:,.2f}",
+        f"R$ {delta_total_cmv:,.2f}",
+        delta_color="normal" if delta_total_cmv >= 0 else "inverse"
+    )
+
+with col5:
+    st.metric(
+        "Total Margem", 
+        f"R$ {total_margem:,.2f}",
+        f"R$ {delta_total_margem:,.2f}",
+        delta_color="normal" if delta_total_margem >= 0 else "inverse"
+    )
+
+with col6:
+    st.metric(
+        "Total Pedidos", 
+        f"{total_pedidos_mes:,}",
+        f"{delta_pedidos:,}",
+        delta_color="normal" if delta_pedidos >= 0 else "inverse"
+    )
+
+st.divider()
+
+# ========================================
+# FATURAMENTO TOTAL
+# ========================================
+st.subheader("💰 Faturamento Total")
+
+# Função para calcular faturamento líquido mensal (Vendas - Devoluções - Devoluções Extras)
+def calcular_faturamento_liquido_mensal(df, df_devo, ano_filtro):
+    df_ano = df[df['Ano'] == ano_filtro]
+    vendas = df_ano[df_ano['Flag tipo'] == 'V'].groupby('Mês')['Total NF'].sum()
+    dev_norm = df_ano[df_ano['Flag tipo'] == 'D'].groupby('Mês')['Total NF'].sum()
+    extra = pd.Series(dtype=float)
+    if df_devo is not None and not df_devo.empty:
+        df_devo_ano = df_devo[df_devo['Ano'] == ano_filtro]
+        extra = df_devo_ano.groupby('Mês')['TOTAL_MERCADORIA'].sum().abs()
+    return pd.Series({m: vendas.get(m, 0) - (dev_norm.get(m, 0) + extra.get(m, 0)) for m in range(1, 13)})
+
+# Comparativo mensal detalhado
+st.markdown("#### 📅 Comparativo Mensal")
+
+with st.spinner("📊 Gerando gráfico comparativo detalhado..."):
+    meses_range = meses_disponiveis
+    meses_labels = [meses[m - 1] for m in meses_range]
+
+    fat_prev_vendas = calcular_faturamento_liquido_mensal(df, df_devo, prev_year).loc[meses_range].tolist()
+    fat_sel_vendas = calcular_faturamento_liquido_mensal(df, df_devo, ano).loc[meses_range].tolist()
+    
+    # Formatação brasileira dos valores (igual margem_cont.py)
+    fmt_prev_vendas = [f"R$ {v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".") for v in fat_prev_vendas]
+    fmt_sel_vendas = [f"R$ {v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".") for v in fat_sel_vendas]
+
+    fig_comparativo = go.Figure()
+    fig_comparativo.add_trace(go.Scatter(
+        x=meses_labels,
+        y=fat_prev_vendas,
+        mode="lines+markers+text",
+        name=str(prev_year),
+        text=fmt_prev_vendas,
+        textposition="bottom center",
+        textfont=dict(size=12),
+        line=dict(width=3, dash='dash'),
+        marker=dict(size=6)
+    ))
+    fig_comparativo.add_trace(go.Scatter(
+        x=meses_labels,
+        y=fat_sel_vendas,
+        mode="lines+markers+text",
+        name=str(ano),
+        text=fmt_sel_vendas,
+        textposition="top center",
+        textfont=dict(size=12),
+        line=dict(width=3),
+        marker=dict(size=6)
+    ))
+    fig_comparativo.update_layout(
+        title=f"Faturamento Mensal (Líquido): {ano} vs {prev_year}",
+        xaxis_title="Mês",
+        yaxis_title="R$",
+        margin=dict(l=40, r=40, t=50, b=40)
+    )
+    st.plotly_chart(fig_comparativo, use_container_width=True)
+
+st.divider()
+
+# ========================================
+# FATURAMENTO POR CANAL
+# ========================================
+st.subheader("🏢 Faturamento por Canal")
+
+col1, col2 = st.columns(2)
+
+with col1:
+    # Gráfico de pizza por atividade
+    fat_canal = df_vendas.groupby('Atividade')['Total NF'].sum().reset_index()
+    if not fat_canal.empty:
+        fig_canal = px.pie(
+            fat_canal, 
+            values='Total NF', 
+            names='Atividade',
+            title='Faturamento por Canal'
+        )
+        fig_canal.update_traces(textposition='inside', textinfo='percent+label')
+        st.plotly_chart(fig_canal, use_container_width=True)
+    else:
+        st.info("Sem dados de canal para o período selecionado")
+
+with col2:
+    # Tabela com valores
+    if not fat_canal.empty:
+        fat_canal_display = fat_canal.copy()
+        fat_canal_display['Participação %'] = (fat_canal_display['Total NF'] / fat_canal_display['Total NF'].sum() * 100).round(2)
+        fat_canal_display = fat_canal_display.rename(columns={'Total NF': 'Valor (R$)'})
+        st.dataframe(
+            fat_canal_display[['Atividade', 'Valor (R$)', 'Participação %']], 
+            hide_index=True,
+            column_config={
+                "Valor (R$)": st.column_config.NumberColumn(format="R$ %.2f"),
+            }
+        )
+        
+        st.metric("Faturamento Total por Canal", f"R$ {fat_canal['Total NF'].sum():,.2f}")
+    else:
+        st.info("Sem dados para exibir")
+
+st.divider()
+
+# ========================================
+# COMPARATIVO REAL X META
+# ========================================
+st.subheader("🎯 Comparativo Real x Meta")
+
+setor_meta = mapear_role_para_setor_meta(role)
+if setor_meta:  # Só mostra se houver setor válido para buscar meta
+    
+    # Buscar meta do mês atual
+    meta_mensal = buscar_meta_mensal(mes, ano, setor_meta)
+    
+    if meta_mensal > 0:
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            st.metric(
+                "Meta do Mês",
+                f"R$ {meta_mensal:,.2f}"
+            )
+        
+        with col2:
+            percentual_atingido = (total_vendas / meta_mensal * 100) if meta_mensal > 0 else 0
+            st.metric(
+                "% Atingido",
+                f"{percentual_atingido:.1f}%",
+                delta_color="normal" if percentual_atingido >= 100 else "inverse"
+            )
+        
+        with col3:
+            diferenca_meta = total_vendas - meta_mensal
+            st.metric(
+                "Diferença",
+                f"R$ {diferenca_meta:,.2f}",
+                delta_color="normal" if diferenca_meta >= 0 else "inverse"
+            )
+        
+        # Gráfico de progresso
+        col1, col2 = st.columns([2, 1])
+        
+        with col1:
+            # Barra de progresso visual
+            progresso = min(percentual_atingido / 100, 1.0)  # Limita em 100% para a barra
+            
+            fig_meta = go.Figure()
+            
+            # Barra de meta (fundo)
+            fig_meta.add_trace(go.Bar(
+                x=[meta_mensal],
+                y=['Meta'],
+                orientation='h',
+                name='Meta',
+                marker_color='lightgray',
+                width=0.5
+            ))
+            
+            # Barra de realizado
+            fig_meta.add_trace(go.Bar(
+                x=[total_vendas],
+                y=['Meta'],
+                orientation='h',
+                name='Realizado',
+                marker_color='green' if percentual_atingido >= 100 else 'orange',
+                width=0.5
+            ))
+            
+            fig_meta.update_layout(
+                title=f"Progresso da Meta - {meses[mes-1]} {ano}",
+                xaxis_title="R$",
+                barmode='overlay',
+                height=200,
+                showlegend=True
+            )
+            
+            st.plotly_chart(fig_meta, use_container_width=True)
+        
+        with col2:
+            # Status visual
+            if percentual_atingido >= 100:
+                st.success(f"✅ Meta atingida!\n+{percentual_atingido-100:.1f}% acima")
+            elif percentual_atingido >= 80:
+                st.warning(f"⚠️ Próximo da meta\n{100-percentual_atingido:.1f}% restante")
+            else:
+                st.error(f"❌ Abaixo da meta\n{100-percentual_atingido:.1f}% restante")
+        
+        # Comparativo anual
+        st.markdown("#### Comparativo Anual - Real x Meta")
+        
+        with st.spinner("📊 Carregando comparativo anual..."):
+            metas_anuais = buscar_metas_anuais(ano, setor_meta)
+            
+            if metas_anuais:
+                # Dados reais por mês
+                vendas_mensais = df_atual[df_atual['Flag tipo'] == 'V'].groupby('Mês')['Total NF'].sum()
+                
+                # Preparar dados para gráfico comparativo anual
+                meses_disponiveis_grafico = list(range(1, mes + 1)) if ano == ano_atual else list(range(1, 13))
+                meses_labels_grafico = [meses[m - 1] for m in meses_disponiveis_grafico]
+                
+                vendas_valores = [vendas_mensais.get(m, 0) for m in meses_disponiveis_grafico]
+                metas_valores = [metas_anuais.get(m, 0) for m in meses_disponiveis_grafico]
+                
+                fig_anual = go.Figure()
+                
+                fig_anual.add_trace(go.Scatter(
+                    x=meses_labels_grafico,
+                    y=metas_valores,
+                    mode='lines+markers',
+                    name='Meta',
+                    line=dict(color='red', width=3, dash='dash'),
+                    marker=dict(size=8)
+                ))
+                
+                fig_anual.add_trace(go.Scatter(
+                    x=meses_labels_grafico,
+                    y=vendas_valores,
+                    mode='lines+markers',
+                    name='Realizado',
+                    line=dict(color='blue', width=3),
+                    marker=dict(size=8),
+                    fill='tonexty',
+                    fillcolor='rgba(0,100,80,0.2)'
+                ))
+                
+                fig_anual.update_layout(
+                    title=f'Evolução Real x Meta - {ano}',
+                    xaxis_title='Mês',
+                    yaxis_title='R$',
+                    hovermode='x unified',
+                    height=400
+                )
+                
+                st.plotly_chart(fig_anual, use_container_width=True)
+                
+                # Tabela resumo
+                df_comparativo = pd.DataFrame({
+                    'Mês': meses_labels_grafico,
+                    'Meta': metas_valores,
+                    'Realizado': vendas_valores
+                })
+                df_comparativo['Diferença'] = df_comparativo['Realizado'] - df_comparativo['Meta']
+                df_comparativo['% Atingido'] = (df_comparativo['Realizado'] / df_comparativo['Meta'] * 100).round(1)
+                
+                # Formatação para exibição
+                df_comparativo_display = df_comparativo.copy()
+                df_comparativo_display['Meta'] = df_comparativo_display['Meta'].apply(lambda x: f"R$ {x:,.2f}")
+                df_comparativo_display['Realizado'] = df_comparativo_display['Realizado'].apply(lambda x: f"R$ {x:,.2f}")
+                df_comparativo_display['Diferença'] = df_comparativo_display['Diferença'].apply(lambda x: f"R$ {x:,.2f}")
+                
+                st.dataframe(df_comparativo_display, hide_index=True, use_container_width=True)
+                
+                # Métricas anuais resumo
+                meta_acumulada = sum(metas_anuais.get(m, 0) for m in range(1, mes + 1))
+                realizado_acumulado = vendas_mensais.sum()
+                
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    st.metric("Meta Acumulada", f"R$ {meta_acumulada:,.2f}")
+                with col2:
+                    st.metric("Realizado Acumulado", f"R$ {realizado_acumulado:,.2f}")
+                with col3:
+                    perc_acumulado = (realizado_acumulado / meta_acumulada * 100) if meta_acumulada > 0 else 0
+                    st.metric("% Acumulado", f"{perc_acumulado:.1f}%")
+                    
+    else:
+        st.info(f"Não há metas cadastradas para {ano} no setor {setor_meta}")
+elif role == "Admin (todas equipes)":
+    st.info("💡 Para visualizar metas, selecione um setor específico (Indústria ou Varejo)")
+else:
+    st.info("💡 Comparativo de metas disponível apenas para setores específicos")
+
+st.divider()
+
+# ========================================
+# TICKET MÉDIO POR CANAL
+# ========================================
+st.subheader("🎫 Ticket Médio por Canal")
+
+if not df_vendas.empty:
+    # Análise de ticket médio por canal
+    analise_ticket = df_vendas.groupby('Atividade').agg({
+        'Total NF': 'sum',
+        'Nota': 'nunique'
+    }).reset_index()
+    
+    # Calcular ticket médio
+    analise_ticket['Ticket Médio'] = analise_ticket['Total NF'] / analise_ticket['Nota']
+    analise_ticket = analise_ticket.sort_values('Ticket Médio', ascending=False)
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        fig_ticket = px.bar(
+            analise_ticket,
+            x='Atividade',
+            y='Ticket Médio',
+            title='Ticket Médio por Canal',
+            text='Ticket Médio'
+        )
+        fig_ticket.update_traces(texttemplate='R$ %{text:,.0f}', textposition='outside')
+        st.plotly_chart(fig_ticket, use_container_width=True)
+    
+    with col2:
+        # Tabela complementar
+        analise_ticket_display = analise_ticket.copy()
+        analise_ticket_display = analise_ticket_display.rename(columns={
+            'Total NF': 'Faturamento (R$)',
+            'Ticket Médio': 'Ticket Médio (R$)'
+        })
+        
+        st.dataframe(
+            analise_ticket_display[['Atividade', 'Faturamento (R$)', 'Nota', 'Ticket Médio (R$)']].rename(columns={'Nota': 'Qtd Pedidos'}),
+            hide_index=True,
+            column_config={
+                "Faturamento (R$)": st.column_config.NumberColumn(format="R$ %.2f"),
+                "Ticket Médio (R$)": st.column_config.NumberColumn(format="R$ %.2f"),
+            }
+        )
+        
+        # Métricas resumo
+        ticket_geral = total_vendas / df_vendas['Nota'].nunique() if df_vendas['Nota'].nunique() > 0 else 0
+        melhor_canal = analise_ticket.iloc[0]['Atividade'] if not analise_ticket.empty else "N/A"
+        
+        col_a, col_b = st.columns(2)
+        with col_a:
+            st.metric("Ticket Médio Geral", f"R$ {ticket_geral:,.2f}")
+        with col_b:
+            st.metric("Melhor Canal", melhor_canal)
+else:
+    st.info("Sem dados de vendas para análise de ticket médio")
+
+st.divider()
+
+# ========================================
+# MARGEM BRUTA POR CANAL
+# ========================================
+st.subheader("💰 Margem Bruta por Canal")
+
+if not df_vendas.empty:
+    # Análise de margem por canal
+    analise_margem_canal = df_vendas.groupby('Atividade').agg({
+        'Total NF': 'sum',
+        '$ Margem': 'sum'
+    }).reset_index()
+    
+    # Calcular margem %
+    analise_margem_canal['Margem %'] = (analise_margem_canal['$ Margem'] / analise_margem_canal['Total NF'] * 100).round(2)
+    analise_margem_canal = analise_margem_canal.sort_values('Margem %', ascending=False)
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        fig_margem_canal = px.bar(
+            analise_margem_canal,
+            x='Atividade', 
+            y='Margem %',
+            title='Margem % por Canal',
+            text='Margem %',
+            color='Margem %',
+            color_continuous_scale='RdYlGn'
+        )
+        fig_margem_canal.update_traces(texttemplate='%{text:.1f}%', textposition='outside')
+        fig_margem_canal.update_layout(showlegend=False)
+        st.plotly_chart(fig_margem_canal, use_container_width=True)
+    
+    with col2:
+        # Tabela com valores absolutos e percentuais
+        analise_margem_display = analise_margem_canal.copy()
+        analise_margem_display = analise_margem_display.rename(columns={
+            'Total NF': 'Faturamento (R$)',
+            '$ Margem': 'Margem (R$)'
+        })
+        
+        st.dataframe(
+            analise_margem_display[['Atividade', 'Faturamento (R$)', 'Margem (R$)', 'Margem %']],
+            hide_index=True,
+            column_config={
+                "Faturamento (R$)": st.column_config.NumberColumn(format="R$ %.2f"),
+                "Margem (R$)": st.column_config.NumberColumn(format="R$ %.2f"),
+            }
+        )
+        
+        # Métricas resumo
+        margem_geral_percent = (total_margem / total_vendas * 100) if total_vendas > 0 else 0
+        melhor_margem_canal = analise_margem_canal.iloc[0]['Atividade'] if not analise_margem_canal.empty else "N/A"
+        
+        col_a, col_b = st.columns(2)
+        with col_a:
+            st.metric("Margem % Geral", f"{margem_geral_percent:.2f}%")
+        with col_b:
+            st.metric("Melhor Margem %", melhor_margem_canal)
+    
+    # Gráfico de margem absoluta
+    st.markdown("#### Margem Absoluta por Canal")
+    fig_margem_abs = px.bar(
+        analise_margem_canal.sort_values('$ Margem', ascending=False),
+        x='Atividade',
+        y='$ Margem',
+        title='Margem Absoluta (R$) por Canal',
+        text='$ Margem'
+    )
+    fig_margem_abs.update_traces(texttemplate='R$ %{text:,.0f}', textposition='outside')
+    st.plotly_chart(fig_margem_abs, use_container_width=True)
+else:
+    st.info("Sem dados de vendas para análise de margem")
+
+st.divider()
+
+# ========================================
+# ANÁLISES DETALHADAS
+# ========================================
+st.subheader("🔍 Análises Detalhadas")
+
+tab1, tab2, tab3, tab4, tab5 = st.tabs(["Top Clientes", "Top Produtos", "Por Estado", "Por Vendedor", "Performance Regional"])
+
+with tab1:
+    st.markdown("### 🏆 Top 10 Clientes")
+    if not df_vendas.empty:
+        df_cliente = dataframe_margem(df_vendas, "Cliente").head(10)
+        fig_cliente = grafico_margem(df_cliente, "Cliente")
+        st.plotly_chart(fig_cliente, use_container_width=True)
+        
+        # Tabela complementar com mais detalhes
+        fat_cliente = df_vendas.groupby('Cliente').agg({
+            'Total NF': 'sum',
+            '$ Margem': 'sum',
+            'Nota': 'nunique'
+        }).reset_index()
+        fat_cliente.columns = ['Cliente', 'Faturamento', 'Margem', 'Qtd Pedidos']
+        fat_cliente = fat_cliente.sort_values('Faturamento', ascending=False).head(10)
+        fat_cliente['Margem %'] = (fat_cliente['Margem'] / fat_cliente['Faturamento'] * 100).round(2)
+        
+        # Formatação para exibição
+        fat_cliente_display = fat_cliente.copy()
+        fat_cliente_display = fat_cliente_display.rename(columns={
+            'Faturamento': 'Faturamento (R$)',
+            'Margem': 'Margem (R$)'
+        })
+        
+        st.dataframe(
+            fat_cliente_display, 
+            hide_index=True, 
+            use_container_width=True,
+            column_config={
+                "Faturamento (R$)": st.column_config.NumberColumn(format="R$ %.2f"),
+                "Margem (R$)": st.column_config.NumberColumn(format="R$ %.2f"),
+            }
+        )
+        
+        # Comparativo com ano anterior
+        df_vendas_prev_clientes = df_prev[df_prev['Flag tipo'] == 'V']
+        if not df_vendas_prev_clientes.empty:
+            st.markdown("#### Comparativo com Ano Anterior")
+            fat_cliente_prev = df_vendas_prev_clientes.groupby('Cliente')['Total NF'].sum().sort_values(ascending=False).head(10)
+            col_a, col_b = st.columns(2)
+            with col_a:
+                st.metric("Top Cliente Atual", fat_cliente.iloc[0]['Cliente'] if not fat_cliente.empty else "N/A")
+            with col_b:
+                st.metric("Top Cliente Anterior", fat_cliente_prev.index[0] if not fat_cliente_prev.empty else "N/A")
+    else:
+        st.info("Sem dados de clientes para o período selecionado")
+
+with tab2:
+    st.markdown("### 📦 Top 10 Produtos")
+    if not df_vendas.empty:
+        df_produto = dataframe_margem(df_vendas, "Produto").head(10)
+        fig_produto = grafico_margem(df_produto, "Produto")
+        st.plotly_chart(fig_produto, use_container_width=True)
+        
+        # Análise por grupo de produtos
+        st.markdown("#### Faturamento por Grupo de Produtos")
+        if 'Grupo' in df_vendas.columns:
+            fat_grupo = df_vendas.groupby('Grupo').agg({
+                'Total NF': 'sum',
+                '$ Margem': 'sum'
+            }).reset_index().sort_values('Total NF', ascending=False)
+            
+            if not fat_grupo.empty:
+                fig_grupo = px.bar(fat_grupo, x='Total NF', y='Grupo', orientation='h',
+                                  title="Faturamento por Grupo de Produtos")
+                st.plotly_chart(fig_grupo, use_container_width=True)
+                
+                # Tabela de grupos
+                fat_grupo_display = fat_grupo.copy()
+                fat_grupo_display = fat_grupo_display.rename(columns={
+                    'Total NF': 'Faturamento (R$)',
+                    '$ Margem': 'Margem (R$)'
+                })
+                st.dataframe(
+                    fat_grupo_display, 
+                    hide_index=True,
+                    column_config={
+                        "Faturamento (R$)": st.column_config.NumberColumn(format="R$ %.2f"),
+                        "Margem (R$)": st.column_config.NumberColumn(format="R$ %.2f"),
+                    }
+                )
+        else:
+            st.info("Dados de grupo de produtos não disponíveis")
+    else:
+        st.info("Sem dados de produtos para o período selecionado")
+
+with tab3:
+    st.markdown("### 🗺️ Análise por Estado")
+    if not df_vendas.empty and 'UF' in df_vendas.columns:
+        # Tabela por UF
+        df_uf = dataframe_margem(df_vendas, "UF")
+        fig_uf = grafico_margem(df_uf, "UF")
+        st.plotly_chart(fig_uf, use_container_width=True)
+        
+        # Distribuição por Região
+        st.markdown("#### Distribuição por Região")
+        if 'Região' in df_vendas.columns:
+            fat_regiao = df_vendas.groupby('Região').agg({
+                'Total NF': 'sum',
+                '$ Margem': 'sum',
+                'Cliente': 'nunique'
+            }).reset_index().sort_values('Total NF', ascending=False)
+            fat_regiao.columns = ['Região', 'Faturamento', 'Margem', 'Qtd Clientes']
+            
+            fat_regiao_display = fat_regiao.copy()
+            fat_regiao_display = fat_regiao_display.rename(columns={
+                'Faturamento': 'Faturamento (R$)',
+                'Margem': 'Margem (R$)'
+            })
+            
+            st.dataframe(
+                fat_regiao_display, 
+                hide_index=True,
+                column_config={
+                    "Faturamento (R$)": st.column_config.NumberColumn(format="R$ %.2f"),
+                    "Margem (R$)": st.column_config.NumberColumn(format="R$ %.2f"),
+                }
+            )
+        else:
+            st.info("Dados de região não disponíveis")
+    else:
+        st.info("Sem dados geográficos para o período selecionado")
+
+with tab4:
+    st.markdown("### 👤 Performance por Vendedor")
+    if not df_vendas.empty and 'Vendedor' in df_vendas.columns:
+        df_vendedor = dataframe_margem(df_vendas, "Vendedor")
+        fig_vendedor = grafico_margem(df_vendedor, "Vendedor")
+        st.plotly_chart(fig_vendedor, use_container_width=True)
+        
+        # Performance por equipe
+        st.markdown("#### Performance por Equipe")
+        if 'Equipe' in df_vendas.columns:
+            fat_equipe = df_vendas.groupby('Equipe').agg({
+                'Total NF': 'sum',
+                '$ Margem': 'sum',
+                'Cliente': 'nunique',
+                'Vendedor': 'nunique'
+            }).reset_index()
+            fat_equipe.columns = ['Equipe', 'Faturamento', 'Margem', 'Qtd Clientes', 'Qtd Vendedores']
+            fat_equipe = fat_equipe.sort_values('Faturamento', ascending=False)
+            
+            fat_equipe_display = fat_equipe.copy()
+            fat_equipe_display = fat_equipe_display.rename(columns={
+                'Faturamento': 'Faturamento (R$)',
+                'Margem': 'Margem (R$)'
+            })
+            
+            st.dataframe(
+                fat_equipe_display, 
+                hide_index=True,
+                column_config={
+                    "Faturamento (R$)": st.column_config.NumberColumn(format="R$ %.2f"),
+                    "Margem (R$)": st.column_config.NumberColumn(format="R$ %.2f"),
+                }
+            )
+        else:
+            st.info("Dados de equipe não disponíveis")
+    else:
+        st.info("Sem dados de vendedores para o período selecionado")
+
+with tab5:
+    st.markdown("### 🎯 Performance Regional")
+    if not df_vendas.empty and 'Região' in df_vendas.columns:
+        
+        # Análise por Região - Totais
+        st.markdown("#### Faturamento Total por Região")
+        fat_regiao_total = df_vendas.groupby('Região').agg({
+            'Total NF': 'sum',
+            '$ Margem': 'sum',
+            'Cliente': 'nunique',
+            'Nota': 'nunique'
+        }).reset_index().sort_values('Total NF', ascending=False)
+        fat_regiao_total.columns = ['Região', 'Faturamento', 'Margem', 'Qtd Clientes', 'Qtd Notas']
+        
+        # Gráfico de barras - Total por região
+        fig_regiao_total = px.bar(
+            fat_regiao_total, 
+            x='Região', 
+            y='Faturamento',
+            title='Faturamento Total por Região',
+            text='Faturamento'
+        )
+        fig_regiao_total.update_traces(texttemplate='R$ %{text:,.0f}', textposition='outside')
+        fig_regiao_total.update_layout(
+            xaxis_title='Região',
+            yaxis_title='R$ Faturamento',
+            showlegend=False
+        )
+        st.plotly_chart(fig_regiao_total, use_container_width=True)
+        
+        # Tabela com totais por região
+        fat_regiao_display = fat_regiao_total.copy()
+        fat_regiao_display = fat_regiao_display.rename(columns={
+            'Faturamento': 'Faturamento (R$)',
+            'Margem': 'Margem (R$)'
+        })
+        fat_regiao_display['Margem %'] = ((fat_regiao_total['Margem'] / fat_regiao_total['Faturamento']) * 100).round(2)
+        fat_regiao_display['Participação %'] = ((fat_regiao_total['Faturamento'] / fat_regiao_total['Faturamento'].sum()) * 100).round(2)
+        
+        st.dataframe(
+            fat_regiao_display, 
+            hide_index=True, 
+            use_container_width=True,
+            column_config={
+                "Faturamento (R$)": st.column_config.NumberColumn(format="R$ %.2f"),
+                "Margem (R$)": st.column_config.NumberColumn(format="R$ %.2f"),
+            }
+        )
+        
+        # Análise cruzada Região x Canal (se existir coluna Atividade)
+        if 'Atividade' in df_vendas.columns:
+            st.markdown("#### Canais por Região")
+            fat_regiao_canal = df_vendas.groupby(['Região', 'Atividade'])['Total NF'].sum().reset_index()
+            fat_regiao_canal_pivot = fat_regiao_canal.pivot(index='Região', columns='Atividade', values='Total NF').fillna(0)
+            
+            # Gráfico de barras empilhadas
+            fig_regiao_canal = go.Figure()
+            
+            for atividade in fat_regiao_canal_pivot.columns:
+                fig_regiao_canal.add_trace(go.Bar(
+                    name=atividade,
+                    x=fat_regiao_canal_pivot.index,
+                    y=fat_regiao_canal_pivot[atividade],
+                ))
+            
+            fig_regiao_canal.update_layout(
+                barmode='stack',
+                title='Faturamento por Região e Canal',
+                xaxis_title='Região',
+                yaxis_title='R$ Faturamento'
+            )
+            st.plotly_chart(fig_regiao_canal, use_container_width=True)
+            
+            # Tabela detalhada por região e canal
+            st.markdown("#### Detalhamento por Região e Canal")
+            fat_regiao_canal_display = fat_regiao_canal.copy()
+            fat_regiao_canal_display = fat_regiao_canal_display.rename(columns={'Total NF': 'Faturamento (R$)'})
+            fat_regiao_canal_display = fat_regiao_canal_display.sort_values('Faturamento (R$)', ascending=False)
+            st.dataframe(
+                fat_regiao_canal_display, 
+                hide_index=True,
+                column_config={
+                    "Faturamento (R$)": st.column_config.NumberColumn(format="R$ %.2f"),
+                }
+            )
+    else:
+        st.info("Dados de região não disponíveis para análise")
+
+st.divider()
+
+# ========================
+# TABELA DETALHADA
+# ========================
+with st.expander("📋 Dados Detalhados", expanded=False):
+    st.markdown(f"#### Dados do mês de {meses[mes - 1]} de {ano}")
+    st.dataframe(
+        df_vendas[[
+            'Data', 'Nota', 'Cliente', 'Produto', 
+            'Valor Unit.', 'Total NF', '$ Margem', 'Mg.Líq', 
+            'Vendedor', 'UF', 'Atividade'
+        ]],
+        column_config={
+            "Total NF": st.column_config.NumberColumn(format="R$ %.2f"),
+            "$ Margem": st.column_config.NumberColumn(format="R$ %.2f"),
+            "Valor Unit.": st.column_config.NumberColumn(format="R$ %.2f"),
+        },
+        hide_index=True,
+        use_container_width=True
+    )
+
+st.divider()
+
+# ========================
+# EXPORTAÇÃO
+# ========================
+st.subheader("📤 Exportar Dados")
+
+# Preparar dados para PDF
+try:
+    # Dados para análises detalhadas no PDF
+    if not df_vendas.empty:
+        # Faturamento por canal
+        fat_canal_pdf = df_vendas.groupby('Atividade')['Total NF'].sum().reset_index()
+        
+        # Top clientes
+        fat_cliente_pdf = df_vendas.groupby('Cliente').agg({
+            'Total NF': 'sum',
+            '$ Margem': 'sum',
+            'Nota': 'nunique'
+        }).reset_index()
+        fat_cliente_pdf.columns = ['Cliente', 'Faturamento', 'Margem', 'Qtd Pedidos']
+        fat_cliente_pdf = fat_cliente_pdf.sort_values('Faturamento', ascending=False)
+        
+        # Faturamento por grupo de produtos
+        if 'Grupo' in df_vendas.columns:
+            fat_grupo_pdf = df_vendas.groupby('Grupo').agg({
+                'Total NF': 'sum',
+                '$ Margem': 'sum'
+            }).reset_index().sort_values('Total NF', ascending=False)
+        else:
+            fat_grupo_pdf = None
+        
+        # Top vendedores
+        if 'Vendedor' in df_vendas.columns:
+            fat_vendedor_pdf = dataframe_margem(df_vendas, "Vendedor")
+        else:
+            fat_vendedor_pdf = None
+    else:
+        fat_canal_pdf = fat_cliente_pdf = fat_grupo_pdf = fat_vendedor_pdf = None
+        
+except Exception as e:
+    st.error(f"Erro ao preparar dados para PDF: {e}")
+    fat_canal_pdf = fat_cliente_pdf = fat_grupo_pdf = fat_vendedor_pdf = None
+
+col1, col2 = st.columns(2)
+
+with col1:
+    csv = df_vendas.to_csv(index=False)
+    st.download_button(
+        label="📊 Baixar dados em CSV",
+        data=csv,
+        file_name=f"vendas_{meses[mes-1]}_{ano}.csv",
+        mime="text/csv"
+    )
+
+with col2:
+    # PDF apenas se reportlab estiver disponível
+    if PDF_DISPONIVEL:
+        # Botão para gerar PDF
+        if st.button("📄 Gerar Relatório PDF", type="primary"):
+            with st.spinner("🔄 Gerando relatório PDF..."):
+                try:
+                    # Gerar PDF completo
+                    pdf_buffer = gerar_pdf_relatorio_vendas(
+                        df_vendas=df_vendas,
+                        ano=ano,
+                        mes=mes,
+                        role=role,
+                        total_vendas=total_vendas,
+                        margem_total=total_margem,
+                        ticket_medio=total_vendas / df_vendas['Nota'].nunique() if df_vendas['Nota'].nunique() > 0 else 0,
+                        delta_total_vendas=delta_total_vendas,
+                        delta_margem=delta_total_margem,
+                        delta_ticket=0,  # Não temos mais ticket médio nos indicadores
+                        fat_canal=fat_canal_pdf,
+                        fat_grupo=fat_grupo_pdf,
+                        fat_cliente=fat_cliente_pdf,
+                        fat_vendedor=fat_vendedor_pdf,
+                        usuario_nome=username
+                    )
+                    
+                    if pdf_buffer:
+                        # Armazenar PDF no session_state para manter o botão permanente
+                        st.session_state['pdf_gerado'] = pdf_buffer.getvalue()
+                        st.session_state['pdf_nome'] = f"relatorio_vendas_{meses[mes-1]}_{ano}.pdf"
+                        st.success("✅ PDF gerado com sucesso!")
+                    else:
+                        st.error("❌ Erro na geração do PDF. Tentando versão simplificada...")
+                        # Fallback para PDF simples
+                        pdf_simples = criar_pdf_simples_vendas(
+                            df_vendas=df_vendas,
+                            ano=ano,
+                            mes=mes,
+                            total_vendas=total_vendas,
+                            margem_total=total_margem
+                        )
+                        if pdf_simples:
+                            st.session_state['pdf_gerado'] = pdf_simples.getvalue()
+                            st.session_state['pdf_nome'] = f"relatorio_simples_{meses[mes-1]}_{ano}.pdf"
+                        else:
+                            st.error("❌ Não foi possível gerar o PDF")
+                except Exception as e:
+                    st.error(f"❌ Erro ao gerar PDF: {e}")
+        
+        # Mostrar botão de download permanente se PDF foi gerado
+        if 'pdf_gerado' in st.session_state and st.session_state['pdf_gerado']:
+            st.download_button(
+                label="📥 Download do Relatório PDF",
+                data=st.session_state['pdf_gerado'],
+                file_name=st.session_state['pdf_nome'],
+                mime="application/pdf",
+                key="download_pdf_permanente"
+            )
+    else:
+        st.info("📋 PDF indisponível - instale o ReportLab: `pip install reportlab`")
+        st.code("pip install reportlab", language="bash")
