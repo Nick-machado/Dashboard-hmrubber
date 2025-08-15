@@ -7,10 +7,7 @@ def gerar_html_relatorio_vendas(df_vendas, ano, mes, role,
                                delta_total_vendas, delta_margem, delta_volume, delta_ticket,
                                fat_canal=None, fat_grupo=None, fat_cliente=None, fat_vendedor=None,
                                usuario_nome=None):
-    """
-    Gera um relatório HTML completo da Visão Geral de Vendas
-    Este HTML pode ser convertido para PDF pelo navegador (Ctrl+P -> Salvar como PDF)
-    """
+    """Gera um relatório HTML completo da Visão Geral de Vendas."""
     
     meses = [
         "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
@@ -321,7 +318,6 @@ def gerar_html_relatorio_vendas(df_vendas, ano, mes, role,
             {usuario_info}
             <p><em>Relatório gerado automaticamente pelo Sistema Dashboard HM Rubber</em></p>
             <p>Data/Hora: {datetime.now().strftime('%d/%m/%Y às %H:%M:%S')}</p>
-            <p><strong>💡 Dica:</strong> Para salvar como PDF, use Ctrl+P e selecione "Salvar como PDF"</p>
         </div>
     </body>
     </html>

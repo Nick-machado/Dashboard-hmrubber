@@ -1,17 +1,61 @@
 import streamlit as st
+from datetime import datetime
 from functions.menu import menu
 from functions.connect import test_connection
 
+# Render sidebar / auth
 menu()
 
-# Here goes your normal streamlit app
-st.title("Bem vindo ao Dashboard da HM Rubber!")
-st.markdown(f"Você está logado como: {st.session_state.username}. Acessos: {st.session_state.role}")
+# ----------------------------------------------------------------------------------
+# Layout simples focado no usuário final
+# ----------------------------------------------------------------------------------
+st.title("🏡 Dashboard HM Rubber")
+st.write("Bem-vindo! Aqui você encontra um resumo rápido do que pode acessar.")
 
+username = st.session_state.get("username", "Usuário")
+roles = st.session_state.get("role", [])
 
-st.write("### Testando conexão com o banco de dados...")
-with st.spinner("Gerando conexão"):
-    if test_connection():
-        st.success("Conexão bem-sucedida!")
+col1, col2 = st.columns([1, 1])
+
+with col1:
+    st.subheader("👤 Usuário")
+    st.write(f"**Nome:** {username}")
+    if roles:
+        st.write("**Permissões:** " + ", ".join(roles))
     else:
-        st.error("Erro ao conectar ao banco de dados.")
+        st.write("Sem permissões registradas.")
+
+with col2:
+    st.subheader("🔌 Conexão")
+    if "db_status" not in st.session_state:
+        with st.spinner("Verificando conexão..."):
+            st.session_state.db_status = test_connection()
+            st.session_state.db_last_check = datetime.now()
+    if st.session_state.db_status:
+        st.success("Conectado ao banco")
+    else:
+        st.error("Falha na conexão")
+    if st.button("Re-testar conexão"):
+        with st.spinner("Testando novamente..."):
+            st.session_state.db_status = test_connection()
+            st.session_state.db_last_check = datetime.now()
+        st.rerun()
+
+st.divider()
+
+# Páginas acessíveis (regra simples baseada nas permissões já tratadas no menu)
+def accessible_pages(roles):
+    base = ["Visão Geral de Vendas", "Margem de Contribuição", "Clientes"]
+    gestor = ["Gerenciador de metas"] if any(r in roles for r in ["Admin", "Gerente Varejo", "Gerente Indústria"]) else []
+    admin = ["Painel Administrativo", "Devoluções", "Pedidos"] if "Admin" in roles else []
+    return base + gestor + admin
+
+pages = accessible_pages(roles)
+st.subheader("📑 Páginas que você pode acessar")
+if pages:
+    for p in pages:
+        st.write(f"- {p}")
+else:
+    st.info("Nenhuma página disponível.")
+
+st.caption("Última verificação: " + st.session_state.get("db_last_check", datetime.now()).strftime("%d/%m/%Y %H:%M:%S"))

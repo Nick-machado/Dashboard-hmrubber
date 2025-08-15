@@ -1,3 +1,1 @@
-# Dependências adicionais para geração de PDF
-reportlab>=4.0.0
-plotly>=5.0.0
+# Arquivo descontinuado: funcionalidades de PDF foram removidas.
