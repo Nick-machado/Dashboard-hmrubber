@@ -8,7 +8,7 @@ def run_query(data_in, data_fin):
     cnxn = get_connection()  # Alterado para usar get_connection
     query = f"""
 SELECT
-    n.DATA,
+    n.ENTREGA AS DATA,
     n.nota || '/' || n.serie AS nota,
     V.DESCRICAO AS TIPO_MOVIMENTO,
     m.codigo AS cod_prod,
@@ -33,8 +33,8 @@ SELECT
     G.GRUPO,
     S.SUBGRUPO,
     i.nfe_cfop AS cfop,
-    EXTRACT(MONTH FROM n.DATA) AS mes,
-    EXTRACT(YEAR FROM n.DATA) AS ano,
+    EXTRACT(MONTH FROM n.ENTREGA) AS mes,
+    EXTRACT(YEAR FROM n.ENTREGA) AS ano,
     i.lote,
     emp.razaosoc AS empresa,
     i.registro,
@@ -53,7 +53,7 @@ LEFT JOIN clientes c ON c.pessoa = n.fornecedor
 LEFT JOIN vendedores ven ON ven.pessoa = c.vendedor
 LEFT JOIN pessoas pv ON pv.codigo = ven.pessoa
 LEFT JOIN equipes e ON e.registro = ven.equipe
-WHERE n.DATA BETWEEN '{data_in}' AND '{data_fin}'
+WHERE n.ENTREGA BETWEEN '{data_in}' AND '{data_fin}'
   AND n.situacao <> 'C'
   AND v.registro IN (01,70,71,79,83,98,120,122,128,143,154,156,160,164,179,181,184,223,224,22)
 """

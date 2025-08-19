@@ -1442,20 +1442,86 @@ st.divider()
 # ========================
 with st.expander("📋 Dados Detalhados", expanded=False):
     st.markdown(f"#### Dados do mês de {meses[mes - 1]} de {ano}")
+    # Construção do dataframe detalhado:
+    # 1. Base: todos os registros do mês selecionado (inclui vendas e devoluções)
+    # 2. Garante presença de coluna 'Equipe' (normaliza 'EQUIPE' se vier assim da query)
+    # 3. Aplica filtro de equipe/ setor selecionado (filtro_equipe) mesmo que já aplicado antes
+    # 4. Exibe TODAS as colunas da query, sem exceção
+    df_detalhado = df_mes.copy()
+    # Normalizar nome da coluna de equipe
+    if 'EQUIPE' in df_detalhado.columns and 'Equipe' not in df_detalhado.columns:
+        df_detalhado.rename(columns={'EQUIPE': 'Equipe'}, inplace=True)
+    # Aplicar (novamente) filtro de equipe se definido
+    if filtro_equipe and 'Equipe' in df_detalhado.columns:
+        df_detalhado = df_detalhado[df_detalhado['Equipe'] == filtro_equipe]
+
+    # Removido toggle de filtro; exibimos sempre todos os registros (vendas + devoluções)
+    # DataFrames específicos de devoluções serão mostrados abaixo
+
+    # Formatação dinâmica de colunas numéricas em moeda quando fizer sentido
+    # Define configuração apenas para algumas colunas conhecidas de valores monetários
+    col_config = {}
+    money_cols = [c for c in df_detalhado.columns if c.lower() in [
+        'total nf', '$ margem', 'valor unit.', 'vlr.icm', 'total_mercadoria', 'total mercadoria', 'mg.líq', 'mg.liq'
+    ]]
+    for c in money_cols:
+        col_config[c] = st.column_config.NumberColumn(format="R$ %.2f")
+
     st.dataframe(
-        df_vendas[[
-            'Data', 'Nota', 'Cliente', 'Produto', 
-            'Valor Unit.', 'Total NF', '$ Margem', 'Mg.Líq', 
-            'Vendedor', 'UF', 'Atividade'
-        ]],
-        column_config={
-            "Total NF": st.column_config.NumberColumn(format="R$ %.2f"),
-            "$ Margem": st.column_config.NumberColumn(format="R$ %.2f"),
-            "Valor Unit.": st.column_config.NumberColumn(format="R$ %.2f"),
-        },
+        df_detalhado,
         hide_index=True,
-        use_container_width=True
+        use_container_width=True,
+        column_config=col_config
     )
+
+    # -------------------------------
+    # Devoluções (NF) do mês
+    # -------------------------------
+    if 'Flag tipo' in df_mes.columns:
+        df_devolucoes_normais = df_mes[df_mes['Flag tipo'] == 'D'].copy()
+        if filtro_equipe and 'Equipe' in df_devolucoes_normais.columns:
+            df_devolucoes_normais = df_devolucoes_normais[df_devolucoes_normais['Equipe'] == filtro_equipe]
+        if not df_devolucoes_normais.empty:
+            st.markdown("##### Devoluções (Notas Fiscais)")
+            col_config_dev = {}
+            money_cols_dev = [c for c in df_devolucoes_normais.columns if c.lower() in [
+                'total nf', '$ margem', 'valor unit.', 'vlr.icm', 'total_mercadoria', 'total mercadoria', 'mg.líq', 'mg.liq'
+            ]]
+            for c in money_cols_dev:
+                col_config_dev[c] = st.column_config.NumberColumn(format="R$ %.2f")
+            st.dataframe(
+                df_devolucoes_normais,
+                hide_index=True,
+                use_container_width=True,
+                column_config=col_config_dev
+            )
+        else:
+            st.markdown("_Não há devoluções (NF) no período._")
+
+    # -------------------------------
+    # Devoluções Extras (query_devo)
+    # -------------------------------
+    if 'df_devo_mes_extra' in locals() and df_devo_mes_extra is not None and not df_devo_mes_extra.empty:
+        st.markdown("##### Devoluções Extras (Query Complementar)")
+        df_devo_display = df_devo_mes_extra.copy()
+        # Formatação monetária
+        col_config_extra = {}
+        money_cols_extra = [c for c in df_devo_display.columns if c.lower() in [
+            'total_mercadoria', 'total mercadoria', 'valor', 'vl_total', 'vlr_total'
+        ] or 'total' in c.lower()]
+        for c in money_cols_extra:
+            col_config_extra[c] = st.column_config.NumberColumn(format="R$ %.2f")
+        st.dataframe(
+            df_devo_display,
+            hide_index=True,
+            use_container_width=True,
+            column_config=col_config_extra
+        )
+    else:
+        st.markdown("_Não há devoluções extras no período._")
+
+    # Guardar no session_state para exportação consistente
+    st.session_state['df_detalhado_export'] = df_detalhado
 
 st.divider()
 
@@ -1465,10 +1531,11 @@ st.divider()
 st.subheader("📤 Exportar Dados")
 
 # Apenas exportação CSV (funcionalidade de PDF removida)
-csv = df_vendas.to_csv(index=False)
+df_export = st.session_state.get('df_detalhado_export', df_vendas)
+csv = df_export.to_csv(index=False)
 st.download_button(
     label="📊 Baixar dados em CSV",
     data=csv,
-    file_name=f"vendas_{meses[mes-1]}_{ano}.csv",
+    file_name=f"dados_detalhados_{meses[mes-1]}_{ano}.csv",
     mime="text/csv"
 )
