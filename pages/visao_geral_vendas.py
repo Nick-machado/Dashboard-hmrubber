@@ -546,7 +546,7 @@ if setor_meta:  # Só mostra se houver setor válido para buscar meta
                 title=f"Progresso da Meta - {meses[mes-1]} {ano}",
                 xaxis_title="R$",
                 barmode='overlay',
-                height=200,
+                height=250,
                 showlegend=True
             )
             
