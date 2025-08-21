@@ -1,15 +1,35 @@
 import streamlit as st
-from datetime import datetime, date
-from calendar import monthrange
-import pandas as pd
-import plotly.graph_objects as go
 from functions.menu import menu_with_redirect
-from functions.query_clientes import run_query
-
 st.set_page_config(layout="wide")
 menu_with_redirect()
 
-# ========== ROLE/SETOR ==========
+"""
+Página de Performance de Clientes
+Insights implementados (somente usando dados já disponíveis = 'OK'):
+1. Top 10 Clientes (R$) – faturamento bruto (sem segmentar direto vs revenda por falta de classificação)
+2. Novos x Recorrentes (mês selecionado)
+3. Taxa de Recompra (até o mês acumulado no ano)
+4. Frequência média de compra e recência média
+5. Clientes novos (acumulado YTD) x recorrentes
+6. Churn 3 e 6 meses (baseado na data de corte = fim do mês selecionado)
+7. Lista detalhada de clientes churned (3m / 6m) e Top 10
+
+Se no futuro houver campo para classificar cliente Direto/Revenda, podemos expandir.
+"""
+
+from datetime import datetime
+from calendar import monthrange
+import pandas as pd
+import plotly.graph_objects as go
+import plotly.express as px
+
+# Queries de clientes (cadastro / última compra) e vendas (para faturamento/top)
+from functions.query_clientes import run_query as run_query_clientes
+from functions.query import run_query as run_query_vendas
+
+# =============================
+# Controle de Acesso (ROLE/SETOR)
+# =============================
 user_role = st.session_state.get("role", [])
 role = None
 
@@ -45,234 +65,298 @@ else:
     st.error("Acesso negado. Você não tem permissão para visualizar esta página.")
     st.stop()
 
-# ========== Tempo ==========
+# =============================
+# Definições de tempo
+# =============================
 hoje = datetime.now()
 ano_atual = hoje.year
 mes_atual = hoje.month
 anos_disponiveis = list(range(ano_atual - 5, ano_atual + 1))
-meses = [
+meses_label = [
     "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
     "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"
 ]
 
-# ========== Filtro setor (equipe) ==========
+# =============================
+# Mapeamento de equipe (setor)
+# =============================
 if role == "Indústria":
     filtro_equipe = "INDUSTRIAL"
 elif role == "Varejo":
     filtro_equipe = "VAREJO"
 elif role == "Exportação Varejo":
     filtro_equipe = "EXPORTAÇÃO VAREJO"
-else:  # Admin (todas equipes)
+else:  # Admin
     filtro_equipe = None
 
-def aplicar_filtro_equipe(df, filtro_equipe):
-    if filtro_equipe and 'NOME_EQUIPE' in df.columns:
-        return df[df['NOME_EQUIPE'] == filtro_equipe]
-    else:
-        return df.copy()
+def aplicar_filtro_equipe(df: pd.DataFrame) -> pd.DataFrame:
+    if filtro_equipe and ('NOME_EQUIPE' in df.columns or 'Equipe' in df.columns):
+        col_eq = 'NOME_EQUIPE' if 'NOME_EQUIPE' in df.columns else 'Equipe'
+        return df[df[col_eq] == filtro_equipe]
+    return df.copy()
 
-# ========== Cache dados ==========
-@st.cache_data(ttl=600)
-def buscar_clientes_ano(ano):
-    df = run_query()  # agora sem argumentos
-    df['ULTIMA_COMPRA'] = pd.to_datetime(df['ULTIMA_COMPRA'], errors='coerce')
-    df['DATA_CADASTRO'] = pd.to_datetime(df['DATA_CADASTRO'], errors='coerce')
-    # Filtra apenas clientes com compra no ano anterior ou no ano selecionado
-    df = df[df['ULTIMA_COMPRA'].dt.year.isin([ano - 1, ano])]
-    df['Mês'] = df['ULTIMA_COMPRA'].dt.month
-    df['Ano'] = df['ULTIMA_COMPRA'].dt.year
+# =============================
+# Cache / Carregamento de Dados
+# =============================
+@st.cache_data(ttl=900)
+def load_clientes_raw():
+    df = run_query_clientes()
+    # Normalizações de datas
+    for col in ["ULTIMA_COMPRA", "DATA_CADASTRO", "DATA_ULTIMA_NOTA"]:
+        if col in df.columns:
+            df[col] = pd.to_datetime(df[col], errors='coerce')
     return df
 
-aba1, aba2 = st.tabs(["Novos x Recorrentes", "Churn de Clientes"])
+@st.cache_data(ttl=900)
+def load_vendas_raw(ano: int, mes: int):
+    """Carrega vendas desde 01/01 do ano anterior até o fim do mês selecionado do ano atual.
+    Necessário para churn (histórico) e YTD.
+    """
+    from datetime import date as _date
+    # Início: 1º jan do ano anterior
+    # Usar formato ISO para evitar ambiguidade de locale no Firebird
+    data_ini = _date(ano - 1, 1, 1).strftime('%Y-%m-%d')
+    # Fim: último dia do mês selecionado (ano atual ou passado se navegando anos históricos)
+    ultimo_dia = monthrange(ano, mes)[1]
+    data_fim = _date(ano, mes, ultimo_dia).strftime('%Y-%m-%d')
+    dv = run_query_vendas(data_ini, data_fim)
+    if 'Data' in dv.columns:
+        dv['Data'] = pd.to_datetime(dv['Data'], errors='coerce')
+    return dv
 
-with aba1:
-    st.markdown("### Novos x Recorrentes")
-    col1, col2 = st.columns([2, 1])
-    with col2:
-        st.markdown("#### Ano")
-        ano = st.selectbox(
-            "",
-            options=anos_disponiveis,
-            index=anos_disponiveis.index(ano_atual),
-            key="select_ano_novos"
-        )
-    if ano == ano_atual:
-        meses_disponiveis = list(range(1, mes_atual + 1))
-    else:
-        meses_disponiveis = list(range(1, 13))
-    with col1:
-        st.markdown("#### Mês")
-        mes = st.selectbox(
-            "",
-            options=meses_disponiveis,
-            format_func=lambda m: meses[m - 1],
-            index=meses_disponiveis.index(mes_atual) if ano == ano_atual else 0,
-            key="select_mes_novos"
-        )
-    with st.spinner("🔄 Carregando dados..."):
-        df_clientes = buscar_clientes_ano(ano)
-    df_clientes = aplicar_filtro_equipe(df_clientes, filtro_equipe)
+@st.cache_data(ttl=900)
+def get_dados_periodo(ano: int, mes: int):
+    """Retorna dataframes filtrados: clientes (última compra ano-1 e ano), vendas YTD."""
+    df_cli = load_clientes_raw()
+    df_cli = df_cli[df_cli['ULTIMA_COMPRA'].dt.year.isin([ano - 1, ano])]
+    df_cli['Ano'] = df_cli['ULTIMA_COMPRA'].dt.year
+    df_cli['Mes'] = df_cli['ULTIMA_COMPRA'].dt.month
 
-    # Se admin e quiser filtrar por equipe específica:
-    if "Admin" in user_role and filtro_equipe is None and 'NOME_EQUIPE' in df_clientes.columns:
-        equipes_unicas = sorted(df_clientes['NOME_EQUIPE'].dropna().unique())
-        equipe_admin = st.selectbox(
-            "Filtrar por equipe (opcional):",
-            options=["Todas"] + equipes_unicas,
-            index=0,
-            key="select_equipe_admin_novos"
-        )
-        if equipe_admin != "Todas":
-            df_clientes = df_clientes[df_clientes['NOME_EQUIPE'] == equipe_admin]
+    dv = load_vendas_raw(ano, mes)
+    # Vendas dos anos (para churn preciso de histórico anterior)
+    dv = dv[dv['Data'].dt.year.isin([ano - 1, ano])]
+    dv['Ano'] = dv['Data'].dt.year
+    dv['Mes'] = dv['Data'].dt.month
 
-    # ============================= NOVA LÓGICA DO GRÁFICO =============================
-    # 1. Filtrar apenas clientes que fizeram compra no mês/ano selecionado
-    mask_mes = (
-        (df_clientes['ULTIMA_COMPRA'].dt.year == ano) &
-        (df_clientes['ULTIMA_COMPRA'].dt.month == mes)
-    )
-    df_mes = df_clientes[mask_mes].copy()
+    # Cutoffs
+    ultimo_dia_mes = monthrange(ano, mes)[1]
+    fim_mes = datetime(ano, mes, ultimo_dia_mes)
+    inicio_ano = datetime(ano, 1, 1)
 
-    # 2. Classificar: Novo se DATA_CADASTRO é do mesmo mês/ano da ULTIMA_COMPRA
+    # Acumulado YTD até mês
+    dv_ytd = dv[(dv['Data'] >= inicio_ano) & (dv['Data'] <= fim_mes)]
+
+    return df_cli, dv, dv_ytd, fim_mes, inicio_ano
+
+# =============================
+# Funções de Métricas
+# =============================
+def classificar_novos_recorrentes(df_mes: pd.DataFrame) -> pd.DataFrame:
+    """Novo se DATA_CADASTRO está no mesmo mês/ano da ULTIMA_COMPRA no mês filtrado."""
+    if df_mes.empty:
+        return df_mes.assign(TIPO_CLIENTE=[])
+    df_mes = df_mes.copy()
     df_mes['TIPO_CLIENTE'] = df_mes.apply(
-        lambda row: "Novo" if (row['DATA_CADASTRO'].year == row['ULTIMA_COMPRA'].year
-                               and row['DATA_CADASTRO'].month == row['ULTIMA_COMPRA'].month)
-        else "Recorrente",
-        axis=1
+        lambda r: 'Novo' if (
+            isinstance(r['DATA_CADASTRO'], pd.Timestamp) and isinstance(r['ULTIMA_COMPRA'], pd.Timestamp)
+            and r['DATA_CADASTRO'].year == r['ULTIMA_COMPRA'].year
+            and r['DATA_CADASTRO'].month == r['ULTIMA_COMPRA'].month
+        ) else 'Recorrente', axis=1
     )
+    return df_mes
 
-    qtd_novos = (df_mes['TIPO_CLIENTE'] == "Novo").sum()
-    qtd_recorrentes = (df_mes['TIPO_CLIENTE'] == "Recorrente").sum()
-
-    cores_novos_recorrentes = ['#FFA726', '#1976D2']
-    pull_novos_recorrentes = [0.10 if qtd_novos < qtd_recorrentes else 0, 0.10 if qtd_recorrentes <= qtd_novos else 0]
-    fig1 = go.Figure(data=[
-        go.Pie(
-            labels=["Novos", "Recorrentes"],
-            values=[qtd_novos, qtd_recorrentes],
-            hole=0.5,
-            marker=dict(colors=cores_novos_recorrentes, line=dict(color='#fff', width=2)),
-            textinfo='label+percent+value',
-            insidetextorientation='auto',
-            pull=pull_novos_recorrentes,
-            hovertemplate='<b>%{label}</b><br>Qtd: %{value}<br>%{percent}',
-            showlegend=True,
-            textposition='outside',
-            textfont=dict(size=13, color='white'),
-            automargin=True
-        )
-    ])
-    fig1.update_layout(
-        title=f"Clientes Novos x Recorrentes ({meses[mes-1]}/{ano})",
-        legend=dict(orientation="h", y=-0.16, x=0.2, font=dict(size=13)),
-        margin=dict(l=80, r=80, t=110, b=80),
-        font=dict(size=14),
-        width=480,
-        height=440
-    )
-
-    st.plotly_chart(fig1, use_container_width=True)
-    st.metric("Clientes Novos", qtd_novos)
-    st.metric("Clientes Recorrentes", qtd_recorrentes)
-
-    with st.expander("Visualizar todos os clientes do mês selecionado"):
-        st.dataframe(
-            df_mes[['ID_CLIENTE', 'RAZAO_SOCIAL', 'NOME_EQUIPE', 'ENDERECO',
-                    'ULTIMA_COMPRA', 'DATA_CADASTRO', 'TIPO_CLIENTE',
-                    'ULTIMA_NOTA', 'DATA_ULTIMA_NOTA']].drop_duplicates('ID_CLIENTE')
-        )
-
-with aba2:
-    st.markdown("### Churn de Clientes")
-    colc1, colc2 = st.columns([2, 1])
-    with colc2:
-        st.markdown("#### Ano")
-        ano_churn = st.selectbox(
-            "",
-            options=anos_disponiveis,
-            index=anos_disponiveis.index(ano_atual),
-            key="select_ano_churn"
-        )
-    with colc1:
-        st.markdown("#### Semestre")
-        semestre = st.selectbox(
-            "",
-            options=[1, 2],
-            format_func=lambda x: "1º Semestre (Jan-Jun)" if x == 1 else "2º Semestre (Jul-Dez)",
-            key="select_semestre_churn"
-        )
-    with st.spinner("🔄 Carregando dados..."):
-        df_clientes_churn = buscar_clientes_ano(ano_churn)
-    df_clientes_churn = aplicar_filtro_equipe(df_clientes_churn, filtro_equipe)
-
-    # Se admin e quiser filtrar por equipe específica:
-    if "Admin" in user_role and filtro_equipe is None and 'NOME_EQUIPE' in df_clientes_churn.columns:
-        equipes_unicas_churn = sorted(df_clientes_churn['NOME_EQUIPE'].dropna().unique())
-        equipe_admin_churn = st.selectbox(
-            "Filtrar por equipe (opcional):",
-            options=["Todas"] + equipes_unicas_churn,
-            index=0,
-            key="select_equipe_admin_churn"
-        )
-        if equipe_admin_churn != "Todas":
-            df_clientes_churn = df_clientes_churn[df_clientes_churn['NOME_EQUIPE'] == equipe_admin_churn]
-
-    if semestre == 1:
-        mes_ini, mes_fim = 1, 6
+def calc_recompra(vendas_ytd: pd.DataFrame):
+    """Taxa de recompra: % clientes com 2+ compras (notas distintas) no YTD."""
+    vendas = vendas_ytd[vendas_ytd['Flag tipo'] == 'V'] if 'Flag tipo' in vendas_ytd.columns else vendas_ytd
+    if vendas.empty:
+        return 0.0, 0, 0
+    # Cliente pode estar identificado por 'Cliente' ou outro campo; fallback para 'Cliente'
+    col_cliente = 'Cliente' if 'Cliente' in vendas.columns else vendas.columns[0]
+    # Considerar Nota se existir
+    col_nota = 'Nota' if 'Nota' in vendas.columns else None
+    if col_nota:
+        compras_cliente = vendas.groupby(col_cliente)[col_nota].nunique()
     else:
-        mes_ini, mes_fim = 7, 12
-    inicio_semestre = datetime(ano_churn, mes_ini, 1)
-    fim_semestre = datetime(ano_churn, mes_fim, monthrange(ano_churn, mes_fim)[1])
-    clientes_base = set(
-        df_clientes_churn[df_clientes_churn['ULTIMA_COMPRA'] < inicio_semestre]['ID_CLIENTE'].unique()
-    )
-    clientes_ativos = set(
-        df_clientes_churn[
-            (df_clientes_churn['ULTIMA_COMPRA'] >= inicio_semestre) &
-            (df_clientes_churn['ULTIMA_COMPRA'] <= fim_semestre)
-        ]['ID_CLIENTE'].unique()
-    )
-    clientes_inativos = clientes_base - clientes_ativos
-    qtd_ativos = len(clientes_ativos)
-    qtd_inativos = len(clientes_inativos)
+        compras_cliente = vendas.groupby(col_cliente)['Data'].nunique()
+    total_clientes = compras_cliente.shape[0]
+    clientes_recompra = (compras_cliente >= 2).sum()
+    taxa = round(clientes_recompra / total_clientes * 100, 2) if total_clientes else 0.0
+    return taxa, clientes_recompra, total_clientes
 
-    cores_churn_semestre = ['#616161', '#43A047']
-    pull_churn_semestre = [0.08, 0.08]
-    fig_churn_semestre = go.Figure(data=[
-        go.Pie(
-            labels=["Inativos", "Ativos"],
-            values=[qtd_inativos, qtd_ativos],
-            hole=0.5,
-            marker=dict(colors=cores_churn_semestre, line=dict(color='#fff', width=2)),
-            textinfo='label+percent+value',
-            insidetextorientation='auto',
-            pull=pull_churn_semestre,
-            hovertemplate='<b>%{label}</b><br>Qtd: %{value}<br>%{percent}',
-            showlegend=True,
-            textposition='outside',
-            textfont=dict(size=13, color='white'),
-            automargin=True
-        )
-    ])
-    periodo_str = f"1º Semestre" if semestre == 1 else "2º Semestre"
-    fig_churn_semestre.update_layout(
-        title=f"Clientes Ativos/Inativos ({periodo_str}/{ano_churn})",
-        legend=dict(orientation="h", y=-0.16, x=0.25, font=dict(size=13)),
-        margin=dict(l=80, r=80, t=110, b=80),
-        font=dict(size=14),
-        width=480,
-        height=440
-    )
-    st.plotly_chart(fig_churn_semestre, use_container_width=True)
-    st.metric("Clientes Inativos (no semestre)", qtd_inativos)
-    st.metric("Clientes Ativos (no semestre)", qtd_ativos)
+def recencia_frequencia(vendas_ytd: pd.DataFrame, data_corte: datetime):
+    vendas = vendas_ytd[vendas_ytd['Flag tipo'] == 'V'] if 'Flag tipo' in vendas_ytd.columns else vendas_ytd
+    if vendas.empty:
+        return 0, 0
+    col_cliente = 'Cliente' if 'Cliente' in vendas.columns else vendas.columns[0]
+    col_nota = 'Nota' if 'Nota' in vendas.columns else None
+    grp = vendas.groupby(col_cliente)
+    ultima = grp['Data'].max()
+    if col_nota:
+        freq = grp[col_nota].nunique()
+    else:
+        freq = grp['Data'].nunique()
+    recencia_dias = (data_corte - ultima).dt.days.mean()
+    freq_media = freq.mean()
+    return round(recencia_dias, 1), round(freq_media, 2)
 
-    with st.expander("Visualizar detalhes dos clientes inativos"):
-        if qtd_inativos > 0:
-            df_inativos = df_clientes_churn[df_clientes_churn['ID_CLIENTE'].isin(clientes_inativos)]
-            st.dataframe(
-                df_inativos[['ID_CLIENTE', 'RAZAO_SOCIAL', 'NOME_EQUIPE', 'ENDERECO',
-                             'ULTIMA_COMPRA', 'DATA_CADASTRO', 'ULTIMA_NOTA', 'DATA_ULTIMA_NOTA']].drop_duplicates('ID_CLIENTE')
-            )
-        else:
-            st.info("Nenhum cliente inativo para este período.")
+def churn_clientes(vendas_full: pd.DataFrame, data_corte: datetime, meses: int):
+    from dateutil.relativedelta import relativedelta
+    limite = data_corte - relativedelta(months=meses)
+    vendas = vendas_full[vendas_full['Flag tipo'] == 'V'] if 'Flag tipo' in vendas_full.columns else vendas_full
+    if vendas.empty:
+        return pd.DataFrame(columns=['Cliente', 'UltimaCompra', 'DiasSemCompra'])
+    col_cliente = 'Cliente' if 'Cliente' in vendas.columns else vendas.columns[0]
+    last = vendas.groupby(col_cliente)['Data'].max().reset_index(name='UltimaCompra')
+    churned = last[last['UltimaCompra'] < limite].copy()
+    churned['DiasSemCompra'] = (data_corte - churned['UltimaCompra']).dt.days
+    return churned.sort_values('DiasSemCompra', ascending=False)
+
+def top_clientes(vendas_ytd: pd.DataFrame, n=10):
+    vendas = vendas_ytd[vendas_ytd['Flag tipo'] == 'V'] if 'Flag tipo' in vendas_ytd.columns else vendas_ytd
+    if vendas.empty or 'Total NF' not in vendas.columns:
+        return pd.DataFrame(columns=['Cliente', 'Faturamento'])
+    col_cliente = 'Cliente'
+    top = vendas.groupby(col_cliente)['Total NF'].sum().sort_values(ascending=False).head(n).reset_index()
+    top.columns = ['Cliente', 'Faturamento']
+    return top
+
+# =============================
+# Filtros Principais
+# =============================
+col_ano, col_mes = st.columns([1, 1])
+with col_ano:
+    ano_sel = st.selectbox("Ano", anos_disponiveis, index=anos_disponiveis.index(ano_atual))
+meses_disponiveis = list(range(1, mes_atual + 1)) if ano_sel == ano_atual else list(range(1, 13))
+with col_mes:
+    mes_sel = st.selectbox("Mês", meses_disponiveis, format_func=lambda m: meses_label[m-1], index=len(meses_disponiveis)-1)
+
+with st.spinner("🔄 Carregando dados..."):
+    df_clientes_raw, df_vendas_full, df_vendas_ytd, data_corte, inicio_ano = get_dados_periodo(ano_sel, mes_sel)
+
+# Aplicar filtro de equipe (clientes não têm faturamento, mas mantemos consistência)
+df_clientes_raw = aplicar_filtro_equipe(df_clientes_raw)
+df_vendas_full = aplicar_filtro_equipe(df_vendas_full)
+df_vendas_ytd = aplicar_filtro_equipe(df_vendas_ytd)
+
+# =============================
+# Novos x Recorrentes (mês selecionado)
+# =============================
+mask_mes_cliente = (
+    (df_clientes_raw['ULTIMA_COMPRA'].dt.year == ano_sel) &
+    (df_clientes_raw['ULTIMA_COMPRA'].dt.month == mes_sel)
+)
+df_mes = df_clientes_raw[mask_mes_cliente].copy()
+df_mes = classificar_novos_recorrentes(df_mes)
+qtd_novos = (df_mes['TIPO_CLIENTE'] == 'Novo').sum()
+qtd_recorrentes = (df_mes['TIPO_CLIENTE'] == 'Recorrente').sum()
+
+fig_novos = go.Figure(data=[go.Pie(
+    labels=['Novos', 'Recorrentes'],
+    values=[qtd_novos, qtd_recorrentes],
+    hole=0.5,
+    marker=dict(colors=['#FFA726', '#1976D2'], line=dict(color='#fff', width=2)),
+    textinfo='label+percent+value',
+    pull=[0.08, 0.08]
+)])
+fig_novos.update_layout(title=f"Clientes Novos x Recorrentes ({meses_label[mes_sel-1]}/{ano_sel})", height=380)
+
+# =============================
+# Taxa de Recompra / Recência / Frequência
+# =============================
+taxa_recompra, clientes_recompra, total_clientes_ativos_ytd = calc_recompra(df_vendas_ytd)
+recencia_media, freq_media = recencia_frequencia(df_vendas_ytd, data_corte)
+
+# =============================
+# Churn 3m / 6m
+# =============================
+churn_3 = churn_clientes(df_vendas_full, data_corte, 3)
+churn_6 = churn_clientes(df_vendas_full, data_corte, 6)
+
+# =============================
+# Top 10 Clientes (YTD)
+# =============================
+df_top10 = top_clientes(df_vendas_ytd, 10)
+
+# =============================
+# KPIs Header
+# =============================
+st.subheader("📊 Visão Geral de Clientes")
+col_k1, col_k2, col_k3, col_k4, col_k5, col_k6 = st.columns(6)
+col_k1.metric("Clientes Ativos YTD", f"{total_clientes_ativos_ytd}")
+col_k2.metric("Taxa Recompra", f"{taxa_recompra:.1f}%")
+col_k3.metric("Recência Média (dias)", recencia_media)
+col_k4.metric("Freq. Média (compras)", freq_media)
+col_k5.metric("Churn 3m", churn_3.shape[0])
+col_k6.metric("Churn 6m", churn_6.shape[0])
+
+st.divider()
+
+# =============================
+# Seções em Abas
+# =============================
+tab1, tab2, tab3, tab4 = st.tabs([
+    "Novos x Recorrentes", "Top 10 Clientes", "Churn", "Detalhes"
+])
+
+with tab1:
+    st.plotly_chart(fig_novos, use_container_width=True)
+    col_a, col_b = st.columns(2)
+    col_a.metric("Clientes Novos (mês)", qtd_novos)
+    col_b.metric("Clientes Recorrentes (mês)", qtd_recorrentes)
+    st.markdown("#### Lista (mês)")
+    if not df_mes.empty:
+        st.dataframe(df_mes[['ID_CLIENTE', 'RAZAO_SOCIAL', 'NOME_EQUIPE', 'ULTIMA_COMPRA', 'DATA_CADASTRO', 'TIPO_CLIENTE']].drop_duplicates('ID_CLIENTE'))
+    else:
+        st.info("Sem clientes com compra nesse mês.")
+
+with tab2:
+    st.markdown("### Top 10 Clientes por Faturamento (YTD)")
+    if df_top10.empty:
+        st.info("Sem dados de faturamento para o período.")
+    else:
+        fig_top = px.bar(df_top10, x='Faturamento', y='Cliente', orientation='h', text='Faturamento',
+                         color='Faturamento', color_continuous_scale='Blues')
+        fig_top.update_layout(yaxis={'categoryorder':'total ascending'}, height=500)
+        st.plotly_chart(fig_top, use_container_width=True)
+        st.dataframe(df_top10)
+
+with tab3:
+    st.markdown(f"### Churn (Data de corte: {data_corte.date()})")
+    col_c1, col_c2 = st.columns(2)
+    col_c1.subheader("Churn 3 meses")
+    if churn_3.empty:
+        col_c1.info("Nenhum cliente churn 3m.")
+    else:
+        col_c1.dataframe(churn_3.rename(columns={'UltimaCompra':'Última Compra'}))
+    col_c2.subheader("Churn 6 meses")
+    if churn_6.empty:
+        col_c2.info("Nenhum cliente churn 6m.")
+    else:
+        col_c2.dataframe(churn_6.rename(columns={'UltimaCompra':'Última Compra'}))
+
+with tab4:
+    st.markdown("### Detalhes YTD")
+    st.caption("Base de vendas filtrada YTD (somente colunas principais).")
+    if not df_vendas_ytd.empty:
+        cols_show = [c for c in ['Data', 'Cliente', 'Nota', 'Total NF', 'Flag tipo', 'Equipe'] if c in df_vendas_ytd.columns]
+        st.dataframe(df_vendas_ytd[cols_show])
+    else:
+        st.info("Sem vendas no período.")
+
+st.divider()
+
+st.download_button(
+    label="📥 Exportar Top 10 (CSV)",
+    data=df_top10.to_csv(index=False).encode('utf-8'),
+    file_name=f"top10_clientes_{ano_sel}_{mes_sel}.csv",
+    mime='text/csv'
+)
+
+st.download_button(
+    label="📥 Exportar Churn 6m (CSV)",
+    data=churn_6.to_csv(index=False).encode('utf-8'),
+    file_name=f"churn6m_{ano_sel}_{mes_sel}.csv",
+    mime='text/csv'
+)
+
+st.caption("*Base construída somente com dados disponíveis; segmentação Direto vs Revenda poderá ser adicionada quando houver classificação de cliente.*")
