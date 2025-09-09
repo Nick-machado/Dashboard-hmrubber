@@ -90,13 +90,12 @@ def menu_autenticado():
     # Menu de Relatórios (disponível para todos)
     st.sidebar.subheader("Relatórios", divider=True)
     st.sidebar.page_link("pages/visao_geral_vendas.py", label="Visão Geral de Vendas", icon="📊")
-    st.sidebar.page_link("pages/margem_cont.py", label="Margem de Contribuição", icon="📊")
     st.sidebar.page_link("pages/clientes.py", label="Clientes", icon="👥")
     
     # Relatórios exclusivos para Admin
     if is_admin():
-        st.sidebar.page_link("pages/devolucao.py", label="Devoluções", icon="📦")
-        st.sidebar.page_link("pages/pedidos.py", label="Pedidos", icon="📝")
+        # mantenho apenas o Painel Administrativo para Admins
+        pass
 
     st.sidebar.divider()
 
