@@ -33,7 +33,7 @@ from functions.query import run_query as run_query_vendas
 user_role = st.session_state.get("role", [])
 role = None
 
-if "Admin" in user_role:
+if "Admin" in user_role or "Consultor" in user_role:
     setores = ["Indústria", "Varejo", "Admin (todas equipes)"]
     setor_base = st.selectbox("Selecione o setor", setores)
     if setor_base == "Varejo":
