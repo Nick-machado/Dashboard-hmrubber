@@ -62,19 +62,39 @@ def menu_autenticado():
     st.sidebar.subheader("Menu Principal", divider=True)
     st.sidebar.page_link("main.py", label="Home Page", icon="🏡")
 
-    if "Admin" in st.session_state['role']:
+    # Funções auxiliares para validação de permissões
+    def has_permission(permissions):
+        """Verifica se o usuário tem alguma das permissões especificadas"""
+        user_roles = st.session_state.get('role', [])
+        return any(role in user_roles for role in permissions)
+    
+    def is_admin():
+        """Verifica se o usuário é Admin"""
+        return "Admin" in st.session_state.get('role', [])
+    
+    def is_manager():
+        """Verifica se o usuário é gerente de qualquer setor"""
+        manager_roles = ["Admin", "Gerente Varejo", "Gerente Indústria", "Gerente Exportação"]
+        return has_permission(manager_roles)
+
+    # Menu de Administração
+    if is_admin():
         st.sidebar.subheader("Administração", divider=True)
         st.sidebar.page_link("pages/administrativo.py", label="Painel Administrativo", icon="🛠️")
 
-    if "Admin" in st.session_state.role or "Gerente Varejo" in st.session_state.role or "Gerente Indústria" in st.session_state.role:
+    # Menu de Gerentes
+    if is_manager():
         st.sidebar.subheader("Painel do gerente", divider=True)
         st.sidebar.page_link("pages/metas.py", label="Gerenciador de metas", icon="💵")
     
+    # Menu de Relatórios (disponível para todos)
     st.sidebar.subheader("Relatórios", divider=True)
     st.sidebar.page_link("pages/visao_geral_vendas.py", label="Visão Geral de Vendas", icon="📊")
     st.sidebar.page_link("pages/margem_cont.py", label="Margem de Contribuição", icon="📊")
     st.sidebar.page_link("pages/clientes.py", label="Clientes", icon="👥")
-    if "Admin" in st.session_state.role:
+    
+    # Relatórios exclusivos para Admin
+    if is_admin():
         st.sidebar.page_link("pages/devolucao.py", label="Devoluções", icon="📦")
         st.sidebar.page_link("pages/pedidos.py", label="Pedidos", icon="📝")
 

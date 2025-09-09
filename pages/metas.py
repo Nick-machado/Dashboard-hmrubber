@@ -35,7 +35,7 @@ user_role = st.session_state.get("role", "")
 
 if "Admin" in user_role:
     # Admin pode escolher entre os setores base
-    setor_base = st.selectbox("Selecione o setor", ["Indústria", "Varejo"])
+    setor_base = st.selectbox("Selecione o setor", ["Indústria", "Varejo", "Exportação"])
     if setor_base == "Varejo":
         # Se Admin escolher Varejo, também mostramos o sub-seletor
         st.markdown("---")
@@ -45,6 +45,8 @@ if "Admin" in user_role:
             horizontal=True,
             key="sub_setor_admin"
         )
+    elif setor_base == "Exportação":
+        setor_final_para_api = "Exportação"
     else:
         setor_final_para_api = setor_base # Se for Indústria, usa o valor diretamente
 
@@ -61,6 +63,9 @@ elif "Gerente Varejo" in user_role:
         horizontal=True,
         key="sub_setor_varejo"
     )
+elif "Gerente Exportação" in user_role or "Exportação" in user_role:
+    setor_final_para_api = "Exportação"
+    st.markdown("#### Setor: Exportação")
 else:
     st.error("Acesso negado. Você não tem permissão para visualizar esta página.")
     st.stop()

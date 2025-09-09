@@ -52,34 +52,26 @@ username = st.session_state.get("username", "Usuário Desconhecido")
 
 role = None
 
-if "Admin" in user_role:
-    setores = ["Indústria", "Varejo", "Admin (todas equipes)"]
+if "Admin" in user_role or "Consultor" in user_role:
+    setores = ["Indústria", "Varejo", "Exportação", "Admin (todas equipes)"]
     setor_base = st.selectbox("Selecione o setor", setores)
     if setor_base == "Varejo":
         st.markdown("---")
-        role = st.radio(
-            "Selecione o tipo de operação Varejo:",
-            ["Varejo", "Exportação Varejo"],
-            horizontal=True,
-            key="sub_setor_admin"
-        )
+        role = "Varejo"
     elif setor_base == "Indústria":
-        role = setor_base
+        role = "Indústria"
+    elif setor_base == "Exportação":
+        role = "Exportação"
     else:
         role = "Admin (todas equipes)"
 
 elif "Gerente Indústria" in user_role or "Indústria" in user_role:
     role = "Indústria"
-    st.markdown("#### Setor: Indústria")
+    st.markdown(f"#### Setor: Indústria")
 
 elif "Gerente Varejo" in user_role or "Varejo" in user_role:
     st.markdown("#### Setor: Varejo")
-    role = st.radio(
-        "Selecione o tipo de operação:",
-        ["Varejo", "Exportação Varejo"],
-        horizontal=True,
-        key="sub_setor_varejo"
-    )
+    role = "Varejo"
 else:
     st.error("Acesso negado. Você não tem permissão para visualizar esta página.")
     st.stop()
@@ -90,7 +82,9 @@ def mapear_role_para_setor_meta(role):
     if role == "Indústria":
         return "Indústria"
     elif role == "Varejo":
-        return "Varejo" 
+        return "Varejo"
+    elif role == "Exportação":
+        return "Exportação"
     elif role == "Exportação Varejo":
         return "Exportação Varejo"
     else:  # Admin (todas equipes)
@@ -213,19 +207,31 @@ if role == "Indústria":
     filtro_equipe = "INDUSTRIAL"
 elif role == "Varejo":
     filtro_equipe = "VAREJO"
-elif role == "Exportação Varejo":
-    filtro_equipe = "EXPORTAÇÃO VAREJO"
+elif role == "Exportação":
+    filtro_equipe = ["EXPORTAÇÃO VAREJO", "EXPORTAÇÃO INDUSTRIA"]
 else:  # Admin (todas equipes)
     filtro_equipe = None
 
 # Filtro na principal (query comum)
-if filtro_equipe and 'Equipe' in df_periodo_all.columns:
+
+if isinstance(filtro_equipe, list):
+    if 'Equipe' in df_periodo_all.columns:
+        df = df_periodo_all[df_periodo_all['Equipe'].isin(filtro_equipe)]
+    else:
+        df = df_periodo_all.copy()
+elif filtro_equipe and 'Equipe' in df_periodo_all.columns:
     df = df_periodo_all[df_periodo_all['Equipe'] == filtro_equipe]
 else:
     df = df_periodo_all.copy()
 
 # Filtro na QUERY_DEVO (usando EQUIPE e mesmo valor do filtro_equipe)
-if filtro_equipe and 'EQUIPE' in df_devo_all.columns:
+
+if isinstance(filtro_equipe, list):
+    if 'EQUIPE' in df_devo_all.columns:
+        df_devo = df_devo_all[df_devo_all['EQUIPE'].isin(filtro_equipe)]
+    else:
+        df_devo = df_devo_all.copy()
+elif filtro_equipe and 'EQUIPE' in df_devo_all.columns:
     df_devo = df_devo_all[df_devo_all['EQUIPE'] == filtro_equipe]
 else:
     df_devo = df_devo_all.copy()
@@ -304,7 +310,10 @@ ultimo_dia = date(ano, mes, monthrange(ano, mes)[1])
 if not df_pedidos_all.empty:
     df_pedidos_mes = df_pedidos_all[(df_pedidos_all['Data'] >= pd.Timestamp(primeiro_dia)) & (df_pedidos_all['Data'] <= pd.Timestamp(ultimo_dia))]
     if filtro_equipe and 'EQUIPE' in df_pedidos_mes.columns:
-        df_pedidos_mes = df_pedidos_mes[df_pedidos_mes['EQUIPE'] == filtro_equipe]
+        if isinstance(filtro_equipe, list):
+            df_pedidos_mes = df_pedidos_mes[df_pedidos_mes['EQUIPE'].isin(filtro_equipe)]
+        else:
+            df_pedidos_mes = df_pedidos_mes[df_pedidos_mes['EQUIPE'] == filtro_equipe]
     total_pedidos_mes = df_pedidos_mes['ID_PEDIDO'].nunique() if 'ID_PEDIDO' in df_pedidos_mes.columns else 0
 else:
     total_pedidos_mes = 0
@@ -315,7 +324,10 @@ df_pedidos_prev_mes = df_pedidos[
     (df_pedidos['Data'] <= pd.Timestamp(date(prev_year, mes, monthrange(prev_year, mes)[1])))
 ]
 if filtro_equipe and 'EQUIPE' in df_pedidos_prev_mes.columns:
-    df_pedidos_prev_mes = df_pedidos_prev_mes[df_pedidos_prev_mes['EQUIPE'] == filtro_equipe]
+    if isinstance(filtro_equipe, list):
+        df_pedidos_prev_mes = df_pedidos_prev_mes[df_pedidos_prev_mes['EQUIPE'].isin(filtro_equipe)]
+    else:
+        df_pedidos_prev_mes = df_pedidos_prev_mes[df_pedidos_prev_mes['EQUIPE'] == filtro_equipe]
 
 total_pedidos_prev = df_pedidos_prev_mes['ID_PEDIDO'].nunique() if 'ID_PEDIDO' in df_pedidos_prev_mes.columns else 0
 delta_pedidos = total_pedidos_mes - total_pedidos_prev
@@ -765,17 +777,47 @@ if not df_vendas.empty:
 
     # ================= TAB CLIENTE =================
     with tab_cliente:
-        analise_ticket_cliente = df_vendas.groupby('Cliente').agg({
-            'Total NF': 'sum',
-            'Nota': 'nunique'
-        }).reset_index()
-        analise_ticket_cliente['Ticket Médio'] = analise_ticket_cliente['Total NF'] / analise_ticket_cliente['Nota']
-        analise_ticket_cliente = analise_ticket_cliente.sort_values('Ticket Médio', ascending=False)
+        # ===== Otimizações de performance =====
+        # 1. Cache da agregação principal por cliente
+        @st.cache_data(ttl=900)
+        def _agregar_ticket_por_cliente(df_ref: pd.DataFrame):
+            agg = df_ref.groupby('Cliente').agg({'Total NF':'sum','Nota':'nunique'}).reset_index()
+            agg['Ticket Médio'] = agg['Total NF'] / agg['Nota']
+            return agg.sort_values('Ticket Médio', ascending=False)
 
-        # Exibir sempre Top 10 (remoção da opção Top 5/Top 10)
+        analise_ticket_cliente = _agregar_ticket_por_cliente(df_vendas)
+
+        # 2. Cache de detalhe de um cliente específico
+        @st.cache_data(ttl=900)
+        def _detalhe_cliente(df_ref: pd.DataFrame, cliente: str):
+            base = df_ref[df_ref['Cliente'] == cliente]
+            if base.empty:
+                return {}, pd.DataFrame(), pd.DataFrame()
+            fat = base['Total NF'].sum()
+            notas = base['Nota'].nunique()
+            ticket = fat / notas if notas else 0
+            margem_rs = base['$ Margem'].sum()
+            margem_pct = (margem_rs / fat * 100) if fat else 0
+            produtos_unique = base['Produto'].nunique()
+            # Top produtos
+            top_prod = base.groupby('Produto').agg({'Total NF':'sum','$ Margem':'sum','Nota':'nunique'}).reset_index()
+            top_prod['Ticket Médio'] = top_prod['Total NF'] / top_prod['Nota']
+            top_prod = top_prod.sort_values('Total NF', ascending=False).head(10)
+            top_prod = top_prod.rename(columns={'Total NF':'Faturamento (R$)', '$ Margem':'Margem (R$)','Nota':'Qtd Notas'})
+            # Todas as notas (para expander) - retornamos subset já pronto
+            notas_df = base[['Data','Nota','Produto','Atividade','Total NF','$ Margem','Valor Unit.','Vendedor']].copy()
+            metrics = {
+                'fat': fat,
+                'notas': notas,
+                'ticket': ticket,
+                'margem_rs': margem_rs,
+                'margem_pct': margem_pct,
+                'produtos_unique': produtos_unique
+            }
+            return metrics, top_prod, notas_df
+
+        # 3. Exibição Top 10 (gráfico + tabela) reutiliza DataFrame cacheado
         analise_ticket_cliente_top = analise_ticket_cliente.head(10)
-
-        # Gráfico Top 10
         fig_ticket_cliente = px.bar(
             analise_ticket_cliente_top,
             x='Cliente',
@@ -789,45 +831,50 @@ if not df_vendas.empty:
         fig_ticket_cliente.update_layout(xaxis_tickangle=-45, height=700, margin=dict(l=40, r=30, t=70, b=200))
         st.plotly_chart(fig_ticket_cliente, use_container_width=True)
 
-        # Tabela Ticket
-        analise_ticket_cliente_display = analise_ticket_cliente.rename(columns={
-            'Total NF': 'Faturamento (R$)',
-            'Ticket Médio': 'Ticket Médio (R$)'
-        })
+        analise_ticket_cliente_display = analise_ticket_cliente.rename(columns={'Total NF':'Faturamento (R$)','Ticket Médio':'Ticket Médio (R$)'})
         with st.expander("📋 Tabela Ticket por Cliente", expanded=False):
             st.dataframe(
-                analise_ticket_cliente_display[['Cliente', 'Faturamento (R$)', 'Nota', 'Ticket Médio (R$)']].rename(columns={'Nota': 'Qtd Pedidos'}),
+                analise_ticket_cliente_display[['Cliente','Faturamento (R$)','Nota','Ticket Médio (R$)']].rename(columns={'Nota':'Qtd Pedidos'}),
                 hide_index=True,
                 use_container_width=True,
                 column_config={
-                    "Faturamento (R$)": st.column_config.NumberColumn(format="R$ %.2f"),
-                    "Ticket Médio (R$)": st.column_config.NumberColumn(format="R$ %.2f"),
+                    'Faturamento (R$)': st.column_config.NumberColumn(format="R$ %.2f"),
+                    'Ticket Médio (R$)': st.column_config.NumberColumn(format="R$ %.2f"),
                 }
             )
+
         ticket_medio_geral_cliente = total_vendas / df_vendas['Nota'].nunique() if df_vendas['Nota'].nunique() > 0 else 0
-        maior_ticket_cliente = analise_ticket_cliente.iloc[0]['Cliente'] if not analise_ticket_cliente.empty else "N/A"
+        maior_ticket_cliente = analise_ticket_cliente.iloc[0]['Cliente'] if not analise_ticket_cliente.empty else 'N/A'
         colc_a, colc_b = st.columns(2)
-        with colc_a:
-            st.metric("Ticket Médio Geral", f"R$ {ticket_medio_geral_cliente:,.2f}")
-        with colc_b:
-            st.metric("Maior Ticket Cliente", maior_ticket_cliente)
-        # ===== Novo bloco de detalhamento por cliente =====
+        with colc_a: st.metric("Ticket Médio Geral", f"R$ {ticket_medio_geral_cliente:,.2f}")
+        with colc_b: st.metric("Maior Ticket Cliente", maior_ticket_cliente)
+
         st.markdown("---")
         st.markdown("#### 🔎 Detalhamento do Cliente")
+
         clientes_disponiveis = analise_ticket_cliente['Cliente'].tolist()
         if clientes_disponiveis:
-            cliente_selecionado = st.selectbox("Selecione um Cliente", clientes_disponiveis, key="cliente_ticket_detalhe")
-            df_cliente_det = df_vendas[df_vendas['Cliente'] == cliente_selecionado]
-            if not df_cliente_det.empty:
-                fat_cliente_sel = df_cliente_det['Total NF'].sum()
-                notas_cliente_sel = df_cliente_det['Nota'].nunique()
-                ticket_cliente_sel = fat_cliente_sel / notas_cliente_sel if notas_cliente_sel > 0 else 0
-                margem_cliente_sel = df_cliente_det['$ Margem'].sum()
-                margem_pct_cliente_sel = (margem_cliente_sel / fat_cliente_sel * 100) if fat_cliente_sel > 0 else 0
-                qtd_produtos_cliente = df_cliente_det['Produto'].nunique()
-                qtd_canais_cliente = df_cliente_det['Atividade'].nunique() if 'Atividade' in df_cliente_det.columns else 0
+            # Selectbox com placeholder (index=None) para não disparar cálculo pesado imediatamente
+            cliente_selecionado = st.selectbox(
+                "Selecione um Cliente",
+                clientes_disponiveis,
+                key="cliente_ticket_detalhe",
+                index=0  # Mantemos primeiro como default para compatibilidade; alterar para None se versão Streamlit suportar placeholder
+            )
 
-                # Ajuste métricas cliente em 2 linhas (3 por linha)
+            # Container fragmentado para isolar rerun somente deste bloco quando trocar cliente
+            def _render_detalhe():
+                metrics, top_produtos_cliente, df_cliente_show = _detalhe_cliente(df_vendas, cliente_selecionado)
+                if not metrics:
+                    st.info("Sem dados do cliente selecionado")
+                    return
+                fat_cliente_sel = metrics['fat']
+                notas_cliente_sel = metrics['notas']
+                ticket_cliente_sel = metrics['ticket']
+                margem_cliente_sel = metrics['margem_rs']
+                margem_pct_cliente_sel = metrics['margem_pct']
+                qtd_produtos_cliente = metrics['produtos_unique']
+
                 r1c1, r1c2, r1c3 = st.columns(3)
                 r2c1, r2c2, r2c3 = st.columns(3)
                 with r1c1: st.metric("Faturamento", f"R$ {fat_cliente_sel:,.2f}")
@@ -837,15 +884,6 @@ if not df_vendas.empty:
                 with r2c2: st.metric("Margem %", f"{margem_pct_cliente_sel:.2f}%")
                 with r2c3: st.metric("Produtos Únicos", f"{qtd_produtos_cliente}")
 
-                # (Removido) Gráfico de pizza de distribuição por canal a pedido do usuário
-
-                # Top produtos do cliente
-                top_produtos_cliente = df_cliente_det.groupby('Produto').agg({'Total NF':'sum','$ Margem':'sum','Nota':'nunique'}).reset_index()
-                top_produtos_cliente['Ticket Médio'] = top_produtos_cliente['Total NF'] / top_produtos_cliente['Nota']
-                top_produtos_cliente = top_produtos_cliente.sort_values('Total NF', ascending=False).head(10)
-                top_produtos_cliente = top_produtos_cliente.rename(columns={'Total NF':'Faturamento (R$)', '$ Margem':'Margem (R$)','Nota':'Qtd Notas'})
-
-                # Exibição sequencial: gráfico seguido da tabela (sem colunas)
                 if not top_produtos_cliente.empty:
                     fig_top_produtos_cliente = px.bar(
                         top_produtos_cliente.sort_values('Faturamento (R$)', ascending=False),
@@ -861,20 +899,25 @@ if not df_vendas.empty:
                     st.plotly_chart(fig_top_produtos_cliente, use_container_width=True)
                 with st.expander("📋 Top 10 Produtos - Tabela (Cliente)", expanded=False):
                     st.dataframe(top_produtos_cliente, hide_index=True, column_config={
-                        "Faturamento (R$)": st.column_config.NumberColumn(format="R$ %.2f"),
-                        "Margem (R$)": st.column_config.NumberColumn(format="R$ %.2f"),
-                        "Ticket Médio": st.column_config.NumberColumn(format="R$ %.2f"),
+                        'Faturamento (R$)': st.column_config.NumberColumn(format="R$ %.2f"),
+                        'Margem (R$)': st.column_config.NumberColumn(format="R$ %.2f"),
+                        'Ticket Médio': st.column_config.NumberColumn(format="R$ %.2f"),
                     })
-
-                # Expander com todas as notas do cliente
                 with st.expander(f"📋 Detalhes completos do cliente {cliente_selecionado}"):
-                    df_cliente_show = df_cliente_det[['Data','Nota','Produto','Atividade','Total NF','$ Margem','Valor Unit.','Vendedor']].copy()
-                    st.dataframe(df_cliente_show, hide_index=True, use_container_width=True, column_config={
-                        'Total NF': st.column_config.NumberColumn(format="R$ %.2f"),
-                        '$ Margem': st.column_config.NumberColumn(format="R$ %.2f"),
-                        'Valor Unit.': st.column_config.NumberColumn(format="R$ %.2f"),
-                    })
-        # ===== Fim bloco detalhamento cliente =====
+                    st.dataframe(
+                        df_cliente_show,
+                        hide_index=True,
+                        use_container_width=True,
+                        column_config={
+                            'Total NF': st.column_config.NumberColumn(format="R$ %.2f"),
+                            '$ Margem': st.column_config.NumberColumn(format="R$ %.2f"),
+                            'Valor Unit.': st.column_config.NumberColumn(format="R$ %.2f"),
+                        }
+                    )
+
+            # Chamada do render isolado
+            _render_detalhe()
+        # ===== Fim bloco detalhamento cliente (otimizado) =====
 else:
     st.info("Sem dados de vendas para análise de ticket médio")
 
@@ -1040,85 +1083,7 @@ def plot_top_fat_liquido(df_top: pd.DataFrame, group_col: str, titulo: str):
 # DataFrame do mês atual completo (inclui V e D) já existe: df_mes
 # DataFrame de devoluções extras do mês: df_devo_mes_extra
 
-tab1, tab2, tab3, tab4, tab5 = st.tabs(["Top Clientes", "Top Produtos", "Por Estado", "Por Vendedor", "Performance Regional"])
-
-with tab1:
-    st.markdown("### 🏆 Top 10 Clientes")
-    if not df_vendas.empty:
-        df_top_clientes = calcular_top_faturamento_liquido(df_mes, df_devo_mes_extra, 'Cliente', 10)
-        fig_cliente = plot_top_fat_liquido(df_top_clientes, 'Cliente', 'Faturamento Líquido por Cliente (Top 10)')
-        st.plotly_chart(fig_cliente, use_container_width=True)
-        # Métrica: Maior Faturamento Líquido (Cliente) delta vs topo ano anterior
-        if not df_top_clientes.empty:
-            top_cliente = df_top_clientes.iloc[0]['Cliente']
-            fat_liq_top_atual = df_top_clientes.iloc[0]['Faturamento Líquido']
-            df_prev_mes_same = df_prev[(df_prev['Mês'] == mes)]
-            if not df_prev_mes_same.empty:
-                df_prev_top_clientes = calcular_top_faturamento_liquido(df_prev_mes_same, df_devo[(df_devo['Ano']==prev_year) & (df_devo['Mês']==mes)] if not df_devo.empty else pd.DataFrame(), 'Cliente', 10)
-                if not df_prev_top_clientes.empty:
-                    top_cliente_prev = df_prev_top_clientes.iloc[0]['Cliente']
-                    fat_liq_prev_top = df_prev_top_clientes.iloc[0]['Faturamento Líquido']
-                else:
-                    top_cliente_prev, fat_liq_prev_top = 'N/A', 0
-            else:
-                top_cliente_prev, fat_liq_prev_top = 'N/A', 0
-            delta_fat = fat_liq_top_atual - fat_liq_prev_top
-            mc1, mc2 = st.columns(2)
-            with mc1:
-                st.metric(
-                    f"Maior Fat. Líquido {ano}",
-                    f"R$ {fat_liq_top_atual:,.2f}",
-                    f"R$ {delta_fat:,.2f}",
-                    delta_color="normal" if delta_fat >= 0 else "inverse",
-                    help=f"Cliente: {top_cliente} (delta vs topo {prev_year})"
-                )
-            with mc2:
-                st.metric(
-                    f"Maior Fat. Líq. {prev_year}",
-                    f"R$ {fat_liq_prev_top:,.2f}",
-                    help=f"Cliente: {top_cliente_prev} (mesmo mês ano anterior)"
-                )
-        
-        # Tabela complementar com mais detalhes
-        fat_cliente = df_vendas.groupby('Cliente').agg({
-            'Total NF': 'sum',
-            '$ Margem': 'sum',
-            'Nota': 'nunique'
-        }).reset_index()
-        fat_cliente.columns = ['Cliente', 'Faturamento', 'Margem', 'Qtd Pedidos']
-        fat_cliente = fat_cliente.sort_values('Faturamento', ascending=False).head(10)
-        fat_cliente['Margem %'] = (fat_cliente['Margem'] / fat_cliente['Faturamento'] * 100).round(2)
-        
-        # Formatação para exibição
-        fat_cliente_display = fat_cliente.copy()
-        fat_cliente_display = fat_cliente_display.rename(columns={
-            'Faturamento': 'Faturamento (R$)',
-            'Margem': 'Margem (R$)'
-        })
-        
-        with st.expander("📋 Tabela Top Clientes", expanded=False):
-            st.dataframe(
-                fat_cliente_display, 
-                hide_index=True, 
-                use_container_width=True,
-                column_config={
-                    "Faturamento (R$)": st.column_config.NumberColumn(format="R$ %.2f"),
-                    "Margem (R$)": st.column_config.NumberColumn(format="R$ %.2f"),
-                }
-            )
-        
-        # Comparativo com ano anterior
-        df_vendas_prev_clientes = df_prev[df_prev['Flag tipo'] == 'V']
-        if not df_vendas_prev_clientes.empty:
-            st.markdown("#### Comparativo com Ano Anterior")
-            fat_cliente_prev = df_vendas_prev_clientes.groupby('Cliente')['Total NF'].sum().sort_values(ascending=False).head(10)
-            col_a, col_b = st.columns(2)
-            with col_a:
-                st.metric("Top Cliente Atual", fat_cliente.iloc[0]['Cliente'] if not fat_cliente.empty else "N/A")
-            with col_b:
-                st.metric("Top Cliente Anterior", fat_cliente_prev.index[0] if not fat_cliente_prev.empty else "N/A")
-    else:
-        st.info("Sem dados de clientes para o período selecionado")
+tab2, tab3, tab4, tab5 = st.tabs(["Top Produtos", "Por Estado", "Por Vendedor", "Performance Regional"])
 
 with tab2:
     st.markdown("### 📦 Top 10 Produtos")
@@ -1453,7 +1418,10 @@ with st.expander("📋 Dados Detalhados", expanded=False):
         df_detalhado.rename(columns={'EQUIPE': 'Equipe'}, inplace=True)
     # Aplicar (novamente) filtro de equipe se definido
     if filtro_equipe and 'Equipe' in df_detalhado.columns:
-        df_detalhado = df_detalhado[df_detalhado['Equipe'] == filtro_equipe]
+        if isinstance(filtro_equipe, list):
+            df_detalhado = df_detalhado[df_detalhado['Equipe'].isin(filtro_equipe)]
+        else:
+            df_detalhado = df_detalhado[df_detalhado['Equipe'] == filtro_equipe]
 
     # Removido toggle de filtro; exibimos sempre todos os registros (vendas + devoluções)
     # DataFrames específicos de devoluções serão mostrados abaixo
@@ -1480,7 +1448,10 @@ with st.expander("📋 Dados Detalhados", expanded=False):
     if 'Flag tipo' in df_mes.columns:
         df_devolucoes_normais = df_mes[df_mes['Flag tipo'] == 'D'].copy()
         if filtro_equipe and 'Equipe' in df_devolucoes_normais.columns:
-            df_devolucoes_normais = df_devolucoes_normais[df_devolucoes_normais['Equipe'] == filtro_equipe]
+            if isinstance(filtro_equipe, list):
+                df_devolucoes_normais = df_devolucoes_normais[df_devolucoes_normais['Equipe'].isin(filtro_equipe)]
+            else:
+                df_devolucoes_normais = df_devolucoes_normais[df_devolucoes_normais['Equipe'] == filtro_equipe]
         if not df_devolucoes_normais.empty:
             st.markdown("##### Devoluções (Notas Fiscais)")
             col_config_dev = {}
