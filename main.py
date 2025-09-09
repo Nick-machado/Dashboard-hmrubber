@@ -43,11 +43,25 @@ with col2:
 
 st.divider()
 
+# Funções auxiliares para validação de permissões
+def has_permission(roles, permissions):
+    """Verifica se o usuário tem alguma das permissões especificadas"""
+    return any(role in roles for role in permissions)
+
+def is_admin(roles):
+    """Verifica se o usuário é Admin"""
+    return "Admin" in roles
+
+def is_manager(roles):
+    """Verifica se o usuário é gerente de qualquer setor"""
+    manager_roles = ["Admin", "Gerente Varejo", "Gerente Indústria", "Gerente Exportação"]
+    return has_permission(roles, manager_roles)
+
 # Páginas acessíveis (regra simples baseada nas permissões já tratadas no menu)
 def accessible_pages(roles):
     base = ["Visão Geral de Vendas", "Margem de Contribuição", "Clientes"]
-    gestor = ["Gerenciador de metas"] if any(r in roles for r in ["Admin", "Gerente Varejo", "Gerente Indústria"]) else []
-    admin = ["Painel Administrativo", "Devoluções", "Pedidos"] if "Admin" in roles else []
+    gestor = ["Gerenciador de metas"] if is_manager(roles) else []
+    admin = ["Painel Administrativo", "Devoluções", "Pedidos"] if is_admin(roles) else []
     return base + gestor + admin
 
 pages = accessible_pages(roles)
