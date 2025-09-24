@@ -172,11 +172,15 @@ def buscar_dados_periodo(ano: int):
     inicio = date(ano - 1, 1, 1)
     fim = date(ano, 12, 31)
     df = run_query(inicio.strftime("%Y-%m-%d"), fim.strftime("%Y-%m-%d"))
+    # Padronizar nomes das colunas
+    df.columns = df.columns.str.strip().str.replace(".", "", regex=False).str.replace(" ", "_")
     df['Data'] = pd.to_datetime(df['Data'])
     df['Mês'] = df['Data'].dt.month
     df['Ano'] = df['Data'].dt.year
 
     df_devo = run_query_devo(inicio.strftime("%Y-%m-%d"), fim.strftime("%Y-%m-%d"))
+    # Padronizar nomes das colunas
+    df_devo.columns = df_devo.columns.str.strip().str.replace(".", "", regex=False).str.replace(" ", "_")
     df_devo['Mês'] = pd.to_datetime(df_devo['DATA']).dt.month
     df_devo['Ano'] = pd.to_datetime(df_devo['DATA']).dt.year
 
@@ -189,6 +193,8 @@ def buscar_pedidos_ano(ano: int, permissoes: list):
     fim = date(ano, 12, 31)
     df_ped = run_query_ped(inicio.strftime("%Y-%m-%d"), fim.strftime("%Y-%m-%d"), situacoes=permissoes)
     if not df_ped.empty:
+        # Padronizar nomes das colunas
+        df_ped.columns = df_ped.columns.str.strip().str.replace(".", "", regex=False).str.replace(" ", "_")
         df_ped['Data'] = pd.to_datetime(df_ped['DATA'])
         df_ped['Mês'] = df_ped['Data'].dt.month
         df_ped['Ano'] = df_ped['Data'].dt.year
@@ -256,12 +262,12 @@ st.divider()
 st.subheader("📈 Indicadores Principais")
 
 # Filtrar apenas vendas (sem devoluções)
-df_vendas = df_mes[df_mes['Flag tipo'] == 'V']
-df_devolucoes = df_mes[df_mes['Flag tipo'] == 'D'] 
+df_vendas = df_mes[df_mes['Flag_tipo'] == 'V']
+df_devolucoes = df_mes[df_mes['Flag_tipo'] == 'D'] 
 
 # Cálculos baseados na mesma lógica da margem_cont.py
-total_vendas = df_vendas['Total NF'].sum()
-total_devolucoes_normais = df_devolucoes['Total NF'].sum()
+total_vendas = df_vendas['Total_NF'].sum()
+total_devolucoes_normais = df_devolucoes['Total_NF'].sum()
 
 # Devoluções extras (da query_devo)
 df_devo_mes_extra = df_devo[(df_devo['Ano'] == ano) & (df_devo['Mês'] == mes)] if not df_devo.empty else pd.DataFrame()
@@ -270,18 +276,18 @@ total_devolucoes_completo = total_devolucoes_normais + abs(devo_extra_mes)
 fat_liquido = total_vendas - total_devolucoes_completo
 
 # CMV e Margem
-total_cmv = df_vendas['Vlr.ICM'].sum()
-total_margem = df_vendas['$ Margem'].sum()
+total_cmv = df_vendas['VlrICM'].sum()
+total_margem = df_vendas['$_Margem'].sum()
 
 # Dados do ano anterior para comparação
-vend_prev_mes = df_prev[df_prev['Flag tipo'] == 'V'].groupby('Mês')['Total NF'].sum().get(mes, 0)
-dev_prev_mes = df_prev[df_prev['Flag tipo'] == 'D'].groupby('Mês')['Total NF'].sum().get(mes, 0)
+vend_prev_mes = df_prev[df_prev['Flag_tipo'] == 'V'].groupby('Mês')['Total_NF'].sum().get(mes, 0)
+dev_prev_mes = df_prev[df_prev['Flag_tipo'] == 'D'].groupby('Mês')['Total_NF'].sum().get(mes, 0)
 devo_extra_mes_prev = df_devo[(df_devo['Ano'] == prev_year) & (df_devo['Mês'] == mes)]['TOTAL_MERCADORIA'].sum() if not df_devo.empty else 0
 total_devolucoes_prev_completo = dev_prev_mes + abs(devo_extra_mes_prev)
 fat_liq_prev_mes = vend_prev_mes - total_devolucoes_prev_completo
 
-total_cmv_prev = df_prev[(df_prev['Mês'] == mes) & (df_prev['Flag tipo'] == 'V')]['Vlr.ICM'].sum()
-total_margem_prev = df_prev[(df_prev['Mês'] == mes) & (df_prev['Flag tipo'] == 'V')]['$ Margem'].sum()
+total_cmv_prev = df_prev[(df_prev['Mês'] == mes) & (df_prev['Flag_tipo'] == 'V')]['VlrICM'].sum()
+total_margem_prev = df_prev[(df_prev['Mês'] == mes) & (df_prev['Flag_tipo'] == 'V')]['$_Margem'].sum()
 
 # Cálculo dos deltas
 delta_total_vendas = total_vendas - vend_prev_mes
@@ -296,6 +302,8 @@ def buscar_dados_pedidos(ano: int, permissoes: list):
     inicio = date(ano - 1, 1, 1)
     fim = date(ano, 12, 31)
     df_pedidos = run_query_ped(inicio.strftime("%Y-%m-%d"), fim.strftime("%Y-%m-%d"), situacoes=permissoes)
+    # Padronizar nomes das colunas
+    df_pedidos.columns = df_pedidos.columns.str.strip().str.replace(".", "", regex=False).str.replace(" ", "_")
     df_pedidos['Data'] = pd.to_datetime(df_pedidos['DATA'])
     df_pedidos['Mês'] = df_pedidos['Data'].dt.month
     df_pedidos['Ano'] = df_pedidos['Data'].dt.year
@@ -391,8 +399,8 @@ st.subheader("💰 Faturamento Total")
 # Função para calcular faturamento líquido mensal (Vendas - Devoluções - Devoluções Extras)
 def calcular_faturamento_liquido_mensal(df, df_devo, ano_filtro):
     df_ano = df[df['Ano'] == ano_filtro]
-    vendas = df_ano[df_ano['Flag tipo'] == 'V'].groupby('Mês')['Total NF'].sum()
-    dev_norm = df_ano[df_ano['Flag tipo'] == 'D'].groupby('Mês')['Total NF'].sum()
+    vendas = df_ano[df_ano['Flag_tipo'] == 'V'].groupby('Mês')['Total_NF'].sum()
+    dev_norm = df_ano[df_ano['Flag_tipo'] == 'D'].groupby('Mês')['Total_NF'].sum()
     extra = pd.Series(dtype=float)
     if df_devo is not None and not df_devo.empty:
         df_devo_ano = df_devo[df_devo['Ano'] == ano_filtro]
@@ -455,11 +463,11 @@ col1, col2 = st.columns(2)
 
 with col1:
     # Gráfico de pizza por atividade
-    fat_canal = df_vendas.groupby('Atividade')['Total NF'].sum().reset_index()
+    fat_canal = df_vendas.groupby('Atividade')['Total_NF'].sum().reset_index()
     if not fat_canal.empty:
         fig_canal = px.pie(
             fat_canal, 
-            values='Total NF', 
+            values='Total_NF', 
             names='Atividade',
             title='Faturamento por Canal'
         )
@@ -472,8 +480,8 @@ with col2:
     # Tabela com valores
     if not fat_canal.empty:
         fat_canal_display = fat_canal.copy()
-        fat_canal_display['Participação %'] = (fat_canal_display['Total NF'] / fat_canal_display['Total NF'].sum() * 100).round(2)
-        fat_canal_display = fat_canal_display.rename(columns={'Total NF': 'Valor (R$)'})
+        fat_canal_display['Participação %'] = (fat_canal_display['Total_NF'] / fat_canal_display['Total_NF'].sum() * 100).round(2)
+        fat_canal_display = fat_canal_display.rename(columns={'Total_NF': 'Valor (R$)'})
         with st.expander("📋 Tabela Faturamento por Canal", expanded=False):
             st.dataframe(
                 fat_canal_display[['Atividade', 'Valor (R$)', 'Participação %']], 
@@ -483,7 +491,7 @@ with col2:
                 }
             )
         
-        st.metric("Faturamento Total por Canal", f"R$ {fat_canal['Total NF'].sum():,.2f}")
+        st.metric("Faturamento Total por Canal", f"R$ {fat_canal['Total_NF'].sum():,.2f}")
     else:
         st.info("Sem dados para exibir")
 
@@ -579,7 +587,7 @@ if setor_meta:  # Só mostra se houver setor válido para buscar meta
             metas_anuais = buscar_metas_anuais(ano, setor_meta)
             if metas_anuais:
                 # Vendas por mês (somente vendas 'V')
-                vendas_mensais = df_atual[df_atual['Flag tipo'] == 'V'].groupby('Mês')['Total NF'].sum()
+                vendas_mensais = df_atual[df_atual['Flag_tipo'] == 'V'].groupby('Mês')['Total_NF'].sum()
 
                 # Sempre 12 meses
                 meses_disponiveis_grafico = list(range(1, 13))
@@ -673,10 +681,10 @@ if not df_vendas.empty:
         # Reorganizado: gráfico acima da tabela (antes lado a lado)
         # Análise de ticket médio por canal
         analise_ticket = df_vendas.groupby('Atividade').agg({
-            'Total NF': 'sum',
+            'Total_NF': 'sum',
             'Nota': 'nunique'
         }).reset_index()
-        analise_ticket['Ticket Médio'] = analise_ticket['Total NF'] / analise_ticket['Nota']
+        analise_ticket['Ticket Médio'] = analise_ticket['Total_NF'] / analise_ticket['Nota']
         analise_ticket = analise_ticket.sort_values('Ticket Médio', ascending=False)
 
         fig_ticket = px.bar(
@@ -693,7 +701,7 @@ if not df_vendas.empty:
         st.plotly_chart(fig_ticket, use_container_width=True)
 
         analise_ticket_display = analise_ticket.rename(columns={
-            'Total NF': 'Faturamento (R$)',
+            'Total_NF': 'Faturamento (R$)',
             'Ticket Médio': 'Ticket Médio (R$)'
         })
         with st.expander("📋 Tabela Ticket por Canal", expanded=False):
@@ -720,10 +728,16 @@ if not df_vendas.empty:
             canal_selecionado = st.selectbox("Selecione um Canal", canais_disponiveis, key="canal_ticket_detalhe")
             df_canal_det = df_vendas[df_vendas['Atividade'] == canal_selecionado]
             if not df_canal_det.empty:
-                fat_canal_sel = df_canal_det['Total NF'].sum()
+                # Verifica se a coluna existe, senão tenta variantes comuns
+                if 'Total_NF' in df_canal_det.columns:
+                    fat_canal_sel = df_canal_det['Total_NF'].sum()
+                elif 'Total NF' in df_canal_det.columns:
+                    fat_canal_sel = df_canal_det['Total NF'].sum()
+                else:
+                    fat_canal_sel = 0  # Ou lance uma exceção se preferir
                 notas_canal_sel = df_canal_det['Nota'].nunique()
                 ticket_canal_sel = fat_canal_sel / notas_canal_sel if notas_canal_sel > 0 else 0
-                margem_canal_sel = df_canal_det['$ Margem'].sum()
+                margem_canal_sel = df_canal_det['$_Margem'].sum()
                 margem_pct_canal_sel = (margem_canal_sel / fat_canal_sel * 100) if fat_canal_sel > 0 else 0
                 qtd_clientes_canal = df_canal_det['Cliente'].nunique()
                 qtd_produtos_canal = df_canal_det['Produto'].nunique()
@@ -739,10 +753,10 @@ if not df_vendas.empty:
                 with row2_c3: st.metric("Clientes Únicos", f"{qtd_clientes_canal}")
 
                 # Top produtos do canal (substitui top clientes) para alinhar com cliente
-                top_produtos_canal = df_canal_det.groupby('Produto').agg({'Total NF':'sum','$ Margem':'sum','Nota':'nunique'}).reset_index()
-                top_produtos_canal['Ticket Médio'] = top_produtos_canal['Total NF'] / top_produtos_canal['Nota']
-                top_produtos_canal = top_produtos_canal.sort_values('Total NF', ascending=False).head(10)
-                top_produtos_canal = top_produtos_canal.rename(columns={'Total NF':'Faturamento (R$)', '$ Margem':'Margem (R$)','Nota':'Qtd Notas'})
+                top_produtos_canal = df_canal_det.groupby('Produto').agg({'Total_NF':'sum','$_Margem':'sum','Nota':'nunique'}).reset_index()
+                top_produtos_canal['Ticket Médio'] = top_produtos_canal['Total_NF'] / top_produtos_canal['Nota']
+                top_produtos_canal = top_produtos_canal.sort_values('Total_NF', ascending=False).head(10)
+                top_produtos_canal = top_produtos_canal.rename(columns={'Total_NF':'Faturamento (R$)', '$_Margem':'Margem (R$)','Nota':'Qtd Notas'})
 
                 # Exibição sequencial: gráfico seguido da tabela (sem colunas)
                 if not top_produtos_canal.empty:
@@ -767,11 +781,14 @@ if not df_vendas.empty:
 
                 # Expander com todos os registros do canal
                 with st.expander(f"📋 Detalhes completos do canal {canal_selecionado}"):
-                    df_canal_show = df_canal_det[['Data','Nota','Cliente','Produto','Total NF','$ Margem','Valor Unit.','Vendedor']].copy()
+                    # Garantir que a coluna 'Data' existe, renomeando se necessário
+                    if 'DATA' in df_canal_det.columns and 'Data' not in df_canal_det.columns:
+                        df_canal_det = df_canal_det.rename(columns={'DATA': 'Data'})
+                    df_canal_show = df_canal_det[['Data', 'Nota', 'Cliente', 'Produto', 'Total_NF', '$_Margem', 'Valor_Unit', 'Vendedor']].copy()
                     st.dataframe(df_canal_show, hide_index=True, use_container_width=True, column_config={
-                        'Total NF': st.column_config.NumberColumn(format="R$ %.2f"),
-                        '$ Margem': st.column_config.NumberColumn(format="R$ %.2f"),
-                        'Valor Unit.': st.column_config.NumberColumn(format="R$ %.2f"),
+                        'Total_NF': st.column_config.NumberColumn(format="R$ %.2f"),
+                        '$_Margem': st.column_config.NumberColumn(format="R$ %.2f"),
+                        'Valor_Unit': st.column_config.NumberColumn(format="R$ %.2f"),
                     })
         # ===== Fim bloco detalhamento canal =====
 
@@ -781,8 +798,8 @@ if not df_vendas.empty:
         # 1. Cache da agregação principal por cliente
         @st.cache_data(ttl=900)
         def _agregar_ticket_por_cliente(df_ref: pd.DataFrame):
-            agg = df_ref.groupby('Cliente').agg({'Total NF':'sum','Nota':'nunique'}).reset_index()
-            agg['Ticket Médio'] = agg['Total NF'] / agg['Nota']
+            agg = df_ref.groupby('Cliente').agg({'Total_NF':'sum','Nota':'nunique'}).reset_index()
+            agg['Ticket Médio'] = agg['Total_NF'] / agg['Nota']
             return agg.sort_values('Ticket Médio', ascending=False)
 
         analise_ticket_cliente = _agregar_ticket_por_cliente(df_vendas)
@@ -793,19 +810,19 @@ if not df_vendas.empty:
             base = df_ref[df_ref['Cliente'] == cliente]
             if base.empty:
                 return {}, pd.DataFrame(), pd.DataFrame()
-            fat = base['Total NF'].sum()
+            fat = base['Total_NF'].sum()
             notas = base['Nota'].nunique()
             ticket = fat / notas if notas else 0
-            margem_rs = base['$ Margem'].sum()
+            margem_rs = base['$_Margem'].sum()
             margem_pct = (margem_rs / fat * 100) if fat else 0
             produtos_unique = base['Produto'].nunique()
             # Top produtos
-            top_prod = base.groupby('Produto').agg({'Total NF':'sum','$ Margem':'sum','Nota':'nunique'}).reset_index()
-            top_prod['Ticket Médio'] = top_prod['Total NF'] / top_prod['Nota']
-            top_prod = top_prod.sort_values('Total NF', ascending=False).head(10)
-            top_prod = top_prod.rename(columns={'Total NF':'Faturamento (R$)', '$ Margem':'Margem (R$)','Nota':'Qtd Notas'})
+            top_prod = base.groupby('Produto').agg({'Total_NF':'sum','$_Margem':'sum','Nota':'nunique'}).reset_index()
+            top_prod['Ticket Médio'] = top_prod['Total_NF'] / top_prod['Nota']
+            top_prod = top_prod.sort_values('Total_NF', ascending=False).head(10)
+            top_prod = top_prod.rename(columns={'Total_NF':'Faturamento (R$)', '$_Margem':'Margem (R$)','Nota':'Qtd Notas'})
             # Todas as notas (para expander) - retornamos subset já pronto
-            notas_df = base[['Data','Nota','Produto','Atividade','Total NF','$ Margem','Valor Unit.','Vendedor']].copy()
+            notas_df = base[['Data','Nota','Produto','Atividade','Total_NF','$_Margem','Valor_Unit','Vendedor']].copy()
             metrics = {
                 'fat': fat,
                 'notas': notas,
@@ -831,7 +848,7 @@ if not df_vendas.empty:
         fig_ticket_cliente.update_layout(xaxis_tickangle=-45, height=700, margin=dict(l=40, r=30, t=70, b=200))
         st.plotly_chart(fig_ticket_cliente, use_container_width=True)
 
-        analise_ticket_cliente_display = analise_ticket_cliente.rename(columns={'Total NF':'Faturamento (R$)','Ticket Médio':'Ticket Médio (R$)'})
+        analise_ticket_cliente_display = analise_ticket_cliente.rename(columns={'Total_NF':'Faturamento (R$)','Ticket Médio':'Ticket Médio (R$)'})
         with st.expander("📋 Tabela Ticket por Cliente", expanded=False):
             st.dataframe(
                 analise_ticket_cliente_display[['Cliente','Faturamento (R$)','Nota','Ticket Médio (R$)']].rename(columns={'Nota':'Qtd Pedidos'}),
@@ -909,9 +926,9 @@ if not df_vendas.empty:
                         hide_index=True,
                         use_container_width=True,
                         column_config={
-                            'Total NF': st.column_config.NumberColumn(format="R$ %.2f"),
-                            '$ Margem': st.column_config.NumberColumn(format="R$ %.2f"),
-                            'Valor Unit.': st.column_config.NumberColumn(format="R$ %.2f"),
+                            'Total_NF': st.column_config.NumberColumn(format="R$ %.2f"),
+                            '$_Margem': st.column_config.NumberColumn(format="R$ %.2f"),
+                            'Valor_Unit': st.column_config.NumberColumn(format="R$ %.2f"),
                         }
                     )
 
@@ -931,12 +948,12 @@ st.subheader("💰 Margem Bruta por Canal")
 if not df_vendas.empty:
     # Análise de margem por canal
     analise_margem_canal = df_vendas.groupby('Atividade').agg({
-        'Total NF': 'sum',
-        '$ Margem': 'sum'
+        'Total_NF': 'sum',
+        '$_Margem': 'sum'
     }).reset_index()
     
     # Calcular margem %
-    analise_margem_canal['Margem %'] = (analise_margem_canal['$ Margem'] / analise_margem_canal['Total NF'] * 100).round(2)
+    analise_margem_canal['Margem %'] = (analise_margem_canal['$_Margem'] / analise_margem_canal['Total_NF'] * 100).round(2)
     analise_margem_canal = analise_margem_canal.sort_values('Margem %', ascending=False)
     
     col1, col2 = st.columns(2)
@@ -960,8 +977,8 @@ if not df_vendas.empty:
         # Tabela com valores absolutos e percentuais
         analise_margem_display = analise_margem_canal.copy()
         analise_margem_display = analise_margem_display.rename(columns={
-            'Total NF': 'Faturamento (R$)',
-            '$ Margem': 'Margem (R$)'
+            'Total_NF': 'Faturamento (R$)',
+            '$_Margem': 'Margem (R$)'
         })
         
         with st.expander("📋 Tabela Margem por Canal", expanded=False):
@@ -987,11 +1004,11 @@ if not df_vendas.empty:
     # Gráfico de margem absoluta
     st.markdown("#### Margem Absoluta por Canal")
     fig_margem_abs = px.bar(
-        analise_margem_canal.sort_values('$ Margem', ascending=False),
+        analise_margem_canal.sort_values('$_Margem', ascending=False),
         x='Atividade',
-        y='$ Margem',
+        y='$_Margem',
         title='Margem Absoluta (R$) por Canal',
-        text='$ Margem',
+        text='$_Margem',
         color='Atividade',
         color_discrete_sequence=px.colors.qualitative.G10,
         height=600
@@ -1020,8 +1037,8 @@ def calcular_top_faturamento_liquido(df_mes_full: pd.DataFrame, df_devo_mes_extr
     if group_col not in df_mes_full.columns:
         return pd.DataFrame(columns=[group_col, 'Faturamento Líquido'])
 
-    vendas = df_mes_full[df_mes_full['Flag tipo'] == 'V'].groupby(group_col)['Total NF'].sum()
-    devolucoes = df_mes_full[df_mes_full['Flag tipo'] == 'D'].groupby(group_col)['Total NF'].sum() if 'D' in df_mes_full['Flag tipo'].unique() else pd.Series(dtype=float)
+    vendas = df_mes_full[df_mes_full['Flag_tipo'] == 'V'].groupby(group_col)['Total_NF'].sum()
+    devolucoes = df_mes_full[df_mes_full['Flag_tipo'] == 'D'].groupby(group_col)['Total_NF'].sum() if 'D' in df_mes_full['Flag_tipo'].unique() else pd.Series(dtype=float)
 
     # Normaliza devoluções (tratadas sempre como valores a subtrair)
     fat_liquido = vendas - devolucoes.reindex(vendas.index, fill_value=0)
@@ -1123,11 +1140,11 @@ with tab2:
     # Relatório "Faturamento por Grupo de Produtos" removido conforme solicitação do usuário.
 
         # Comparativo com Ano Anterior (Top Produtos por Faturamento)
-        df_vendas_prev_produtos = df_prev[df_prev['Flag tipo'] == 'V'] if not df_prev.empty else pd.DataFrame()
+        df_vendas_prev_produtos = df_prev[df_prev['Flag_tipo'] == 'V'] if not df_prev.empty else pd.DataFrame()
         if not df_vendas_prev_produtos.empty and 'Produto' in df_vendas_prev_produtos.columns:
             st.markdown("#### Comparativo com Ano Anterior")
-            fat_produto_atual = df_vendas[df_vendas['Flag tipo'] == 'V'].groupby('Produto')['Total NF'].sum().sort_values(ascending=False)
-            fat_produto_prev = df_vendas_prev_produtos.groupby('Produto')['Total NF'].sum().sort_values(ascending=False)
+            fat_produto_atual = df_vendas[df_vendas['Flag_tipo'] == 'V'].groupby('Produto')['Total_NF'].sum().sort_values(ascending=False)
+            fat_produto_prev = df_vendas_prev_produtos.groupby('Produto')['Total_NF'].sum().sort_values(ascending=False)
             col_a, col_b = st.columns(2)
             with col_a:
                 st.metric("Top Produto Atual", fat_produto_atual.index[0] if not fat_produto_atual.empty else "N/A")
@@ -1177,10 +1194,10 @@ with tab3:
         st.markdown("#### Distribuição por Região")
         if 'Região' in df_vendas.columns:
             fat_regiao = df_vendas.groupby('Região').agg({
-                'Total NF': 'sum',
-                '$ Margem': 'sum',
+                'Total_NF': 'sum',
+                '$_Margem': 'sum',
                 'Cliente': 'nunique'
-            }).reset_index().sort_values('Total NF', ascending=False)
+            }).reset_index().sort_values('Total_NF', ascending=False)
             fat_regiao.columns = ['Região', 'Faturamento', 'Margem', 'Qtd Clientes']
             
             fat_regiao_display = fat_regiao.copy()
@@ -1202,11 +1219,11 @@ with tab3:
             st.info("Dados de região não disponíveis")
 
         # Comparativo com Ano Anterior (Top UF por Faturamento)
-        df_vendas_prev_uf = df_prev[df_prev['Flag tipo'] == 'V'] if not df_prev.empty else pd.DataFrame()
+        df_vendas_prev_uf = df_prev[df_prev['Flag_tipo'] == 'V'] if not df_prev.empty else pd.DataFrame()
         if not df_vendas_prev_uf.empty and 'UF' in df_vendas_prev_uf.columns:
             st.markdown("#### Comparativo com Ano Anterior")
-            fat_uf_atual = df_vendas[df_vendas['Flag tipo'] == 'V'].groupby('UF')['Total NF'].sum().sort_values(ascending=False)
-            fat_uf_prev = df_vendas_prev_uf.groupby('UF')['Total NF'].sum().sort_values(ascending=False)
+            fat_uf_atual = df_vendas[df_vendas['Flag_tipo'] == 'V'].groupby('UF')['Total_NF'].sum().sort_values(ascending=False)
+            fat_uf_prev = df_vendas_prev_uf.groupby('UF')['Total_NF'].sum().sort_values(ascending=False)
             col_a, col_b = st.columns(2)
             with col_a:
                 st.metric("Top UF Atual", fat_uf_atual.index[0] if not fat_uf_atual.empty else "N/A")
@@ -1255,8 +1272,8 @@ with tab4:
         st.markdown("#### Performance por Equipe")
         if 'Equipe' in df_vendas.columns:
             fat_equipe = df_vendas.groupby('Equipe').agg({
-                'Total NF': 'sum',
-                '$ Margem': 'sum',
+                'Total_NF': 'sum',
+                '$_Margem': 'sum',
                 'Cliente': 'nunique',
                 'Vendedor': 'nunique'
             }).reset_index()
@@ -1282,11 +1299,11 @@ with tab4:
             st.info("Dados de equipe não disponíveis")
 
         # Comparativo com Ano Anterior (Top Vendedor por Faturamento)
-        df_vendas_prev_vend = df_prev[df_prev['Flag tipo'] == 'V'] if not df_prev.empty else pd.DataFrame()
+        df_vendas_prev_vend = df_prev[df_prev['Flag_tipo'] == 'V'] if not df_prev.empty else pd.DataFrame()
         if not df_vendas_prev_vend.empty and 'Vendedor' in df_vendas_prev_vend.columns:
             st.markdown("#### Comparativo com Ano Anterior")
-            fat_vend_atual = df_vendas[df_vendas['Flag tipo'] == 'V'].groupby('Vendedor')['Total NF'].sum().sort_values(ascending=False)
-            fat_vend_prev = df_vendas_prev_vend.groupby('Vendedor')['Total NF'].sum().sort_values(ascending=False)
+            fat_vend_atual = df_vendas[df_vendas['Flag_tipo'] == 'V'].groupby('Vendedor')['Total_NF'].sum().sort_values(ascending=False)
+            fat_vend_prev = df_vendas_prev_vend.groupby('Vendedor')['Total_NF'].sum().sort_values(ascending=False)
             col_a, col_b = st.columns(2)
             with col_a:
                 st.metric("Top Vendedor Atual", fat_vend_atual.index[0] if not fat_vend_atual.empty else "N/A")
@@ -1302,11 +1319,11 @@ with tab5:
         # Análise por Região - Totais
         st.markdown("#### Faturamento Total por Região")
         fat_regiao_total = df_vendas.groupby('Região').agg({
-            'Total NF': 'sum',
-            '$ Margem': 'sum',
+            'Total_NF': 'sum',
+            '$_Margem': 'sum',
             'Cliente': 'nunique',
             'Nota': 'nunique'
-        }).reset_index().sort_values('Total NF', ascending=False)
+        }).reset_index().sort_values('Total_NF', ascending=False)
         fat_regiao_total.columns = ['Região', 'Faturamento', 'Margem', 'Qtd Clientes', 'Qtd Notas']
         
         # Gráfico de barras - Total por região
@@ -1351,8 +1368,8 @@ with tab5:
         # Análise cruzada Região x Canal (se existir coluna Atividade)
         if 'Atividade' in df_vendas.columns:
             st.markdown("#### Canais por Região")
-            fat_regiao_canal = df_vendas.groupby(['Região', 'Atividade'])['Total NF'].sum().reset_index()
-            fat_regiao_canal_pivot = fat_regiao_canal.pivot(index='Região', columns='Atividade', values='Total NF').fillna(0)
+            fat_regiao_canal = df_vendas.groupby(['Região', 'Atividade'])['Total_NF'].sum().reset_index()
+            fat_regiao_canal_pivot = fat_regiao_canal.pivot(index='Região', columns='Atividade', values='Total_NF').fillna(0)
             
             # Gráfico de barras empilhadas
             fig_regiao_canal = go.Figure()
@@ -1375,7 +1392,7 @@ with tab5:
             # Tabela detalhada por região e canal
             st.markdown("#### Detalhamento por Região e Canal")
             fat_regiao_canal_display = fat_regiao_canal.copy()
-            fat_regiao_canal_display = fat_regiao_canal_display.rename(columns={'Total NF': 'Faturamento (R$)'})
+            fat_regiao_canal_display = fat_regiao_canal_display.rename(columns={'Total_NF': 'Faturamento (R$)'})
             fat_regiao_canal_display = fat_regiao_canal_display.sort_values('Faturamento (R$)', ascending=False)
             with st.expander("📋 Tabela Região x Canal", expanded=False):
                 st.dataframe(
@@ -1387,11 +1404,11 @@ with tab5:
                 )
 
         # Comparativo com Ano Anterior (Top Região por Faturamento)
-        df_vendas_prev_reg = df_prev[df_prev['Flag tipo'] == 'V'] if not df_prev.empty else pd.DataFrame()
+        df_vendas_prev_reg = df_prev[df_prev['Flag_tipo'] == 'V'] if not df_prev.empty else pd.DataFrame()
         if not df_vendas_prev_reg.empty and 'Região' in df_vendas_prev_reg.columns:
             st.markdown("#### Comparativo com Ano Anterior")
-            fat_reg_atual = df_vendas[df_vendas['Flag tipo'] == 'V'].groupby('Região')['Total NF'].sum().sort_values(ascending=False)
-            fat_reg_prev = df_vendas_prev_reg.groupby('Região')['Total NF'].sum().sort_values(ascending=False)
+            fat_reg_atual = df_vendas[df_vendas['Flag_tipo'] == 'V'].groupby('Região')['Total_NF'].sum().sort_values(ascending=False)
+            fat_reg_prev = df_vendas_prev_reg.groupby('Região')['Total_NF'].sum().sort_values(ascending=False)
             col_a, col_b = st.columns(2)
             with col_a:
                 st.metric("Top Região Atual", fat_reg_atual.index[0] if not fat_reg_atual.empty else "N/A")
@@ -1445,8 +1462,8 @@ with st.expander("📋 Dados Detalhados", expanded=False):
     # -------------------------------
     # Devoluções (NF) do mês
     # -------------------------------
-    if 'Flag tipo' in df_mes.columns:
-        df_devolucoes_normais = df_mes[df_mes['Flag tipo'] == 'D'].copy()
+    if 'Flag_tipo' in df_mes.columns:
+        df_devolucoes_normais = df_mes[df_mes['Flag_tipo'] == 'D'].copy()
         if filtro_equipe and 'Equipe' in df_devolucoes_normais.columns:
             if isinstance(filtro_equipe, list):
                 df_devolucoes_normais = df_devolucoes_normais[df_devolucoes_normais['Equipe'].isin(filtro_equipe)]

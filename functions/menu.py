@@ -91,6 +91,8 @@ def menu_autenticado():
     st.sidebar.subheader("Relatórios", divider=True)
     st.sidebar.page_link("pages/visao_geral_vendas.py", label="Visão Geral de Vendas", icon="📊")
     st.sidebar.page_link("pages/clientes.py", label="Clientes", icon="👥")
+    # Novo relatório regional
+    st.sidebar.page_link("pages/relatorio_regional.py", label="Relatório Regional", icon="🗺️")
     
     # Relatórios exclusivos para Admin
     if is_admin():

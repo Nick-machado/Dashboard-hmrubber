@@ -59,7 +59,7 @@ def is_manager(roles):
 
 # Páginas acessíveis (regra simples baseada nas permissões já tratadas no menu)
 def accessible_pages(roles):
-    base = ["Visão Geral de Vendas", "Clientes"]
+    base = ["Visão Geral de Vendas", "Clientes", "Relatório Regional"]
     gestor = ["Gerenciador de metas"] if is_manager(roles) else []
     admin = ["Painel Administrativo"] if is_admin(roles) else []
     return base + gestor + admin
