@@ -141,7 +141,10 @@ df_mensal_nova = (
 # Seleção de Cliente
 # ========================
 clientes = sorted(set(df_mensal_original['Cliente'].astype(str)).union(set(df_mensal_nova['Cliente'].astype(str))))
-cliente_selecionado = st.selectbox("Cliente", options=clientes) if clientes else None
+clientes_opcoes = ["Todos os clientes"] + clientes if clientes else ["Todos os clientes"]
+cliente_selecionado = st.selectbox("Cliente", options=clientes_opcoes, index=0)
+# Se "Todos os clientes" está selecionado, tratamos como None para mostrar todos
+cliente_selecionado = None if cliente_selecionado == "Todos os clientes" else cliente_selecionado
 
 # Formatação monetária (FAÇA SEMPRE DEPOIS dos cálculos)
 def aplicar_formatacao(df: pd.DataFrame) -> pd.DataFrame:
@@ -155,9 +158,10 @@ def aplicar_formatacao(df: pd.DataFrame) -> pd.DataFrame:
     return df_fmt
 
 # ========================
-# Exibição por cliente (se houver)
+# Exibição dos dados
 # ========================
 if cliente_selecionado:
+    # Dados filtrados por cliente específico
     df_mensal_original_filtrado = df_mensal_original[df_mensal_original['Cliente'].astype(str) == str(cliente_selecionado)].copy()
     df_mensal_nova_filtrado = df_mensal_nova[df_mensal_nova['Cliente'].astype(str) == str(cliente_selecionado)].copy()
     
@@ -170,44 +174,75 @@ if cliente_selecionado:
         (df_mensal_nova_filtrado['Margem Mensal'] / df_mensal_nova_filtrado['Total NF Mensal'] * 100)
         .fillna(0).round(2)
     )
-
-    st.markdown(f"#### Margem Custo Sistema")
-    st.dataframe(
-        aplicar_formatacao(df_mensal_original_filtrado[['Nome do Mês', 'Total NF Mensal', 'Margem Mensal', '% Margem de contribuição']]),
-        hide_index=True, use_container_width=True
+else:
+    # Dados agregados de todos os clientes (agrupados por mês)
+    df_mensal_original_filtrado = (
+        df_mensal_original
+        .groupby(['Mês', 'Nome do Mês'], as_index=False)
+        .agg({
+            'Total NF Mensal': 'sum',
+            'Margem Mensal': 'sum'
+        })
+        .sort_values(['Mês'])
+    )
+    df_mensal_nova_filtrado = (
+        df_mensal_nova
+        .groupby(['Mês', 'Nome do Mês'], as_index=False)
+        .agg({
+            'Total NF Mensal': 'sum',
+            'Margem Mensal': 'sum'
+        })
+        .sort_values(['Mês'])
     )
     
-    # Métricas Margem Custo Sistema
-    total_nf_original = df_mensal_original_filtrado['Total NF Mensal'].sum()
-    total_margem_original = df_mensal_original_filtrado['Margem Mensal'].sum()
-    percentual_original = (total_margem_original / total_nf_original * 100) if total_nf_original != 0 else 0
-    
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        st.metric("Total NF", formatar_moeda_brasileira(total_nf_original))
-    with col2:
-        st.metric("Total Margem", formatar_moeda_brasileira(total_margem_original))
-    with col3:
-        st.metric("% Margem Total", f"{percentual_original:.2f}%")
-
-    st.markdown(f"#### Margem Custo Padrão")
-    st.dataframe(
-        aplicar_formatacao(df_mensal_nova_filtrado[['Nome do Mês', 'Total NF Mensal', 'Margem Mensal', '% Margem de contribuição']]),
-        hide_index=True, use_container_width=True
+    # Adiciona % Margem de contribuição
+    df_mensal_original_filtrado['% Margem de contribuição'] = (
+        (df_mensal_original_filtrado['Margem Mensal'] / df_mensal_original_filtrado['Total NF Mensal'] * 100)
+        .fillna(0).round(2)
     )
-    
-    # Métricas Margem Custo Padrão
-    total_nf_nova = df_mensal_nova_filtrado['Total NF Mensal'].sum()
-    total_margem_nova = df_mensal_nova_filtrado['Margem Mensal'].sum()
-    percentual_nova = (total_margem_nova / total_nf_nova * 100) if total_nf_nova != 0 else 0
-    
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        st.metric("Total NF", formatar_moeda_brasileira(total_nf_nova))
-    with col2:
-        st.metric("Total Margem", formatar_moeda_brasileira(total_margem_nova))
-    with col3:
-        st.metric("% Margem Total", f"{percentual_nova:.2f}%")
+    df_mensal_nova_filtrado['% Margem de contribuição'] = (
+        (df_mensal_nova_filtrado['Margem Mensal'] / df_mensal_nova_filtrado['Total NF Mensal'] * 100)
+        .fillna(0).round(2)
+    )
+
+cliente_titulo = f" - {cliente_selecionado}" if cliente_selecionado else " - Todos os Clientes"
+st.markdown(f"#### Margem Custo Sistema{cliente_titulo}")
+st.dataframe(
+    aplicar_formatacao(df_mensal_original_filtrado[['Nome do Mês', 'Total NF Mensal', 'Margem Mensal', '% Margem de contribuição']]),
+    hide_index=True, use_container_width=True
+)
+
+# Métricas Margem Custo Sistema
+total_nf_original = df_mensal_original_filtrado['Total NF Mensal'].sum()
+total_margem_original = df_mensal_original_filtrado['Margem Mensal'].sum()
+percentual_original = (total_margem_original / total_nf_original * 100) if total_nf_original != 0 else 0
+
+col1, col2, col3 = st.columns(3)
+with col1:
+    st.metric("Total NF", formatar_moeda_brasileira(total_nf_original))
+with col2:
+    st.metric("Total Margem", formatar_moeda_brasileira(total_margem_original))
+with col3:
+    st.metric("% Margem Total", f"{percentual_original:.2f}%")
+
+st.markdown(f"#### Margem Custo Padrão{cliente_titulo}")
+st.dataframe(
+    aplicar_formatacao(df_mensal_nova_filtrado[['Nome do Mês', 'Total NF Mensal', 'Margem Mensal', '% Margem de contribuição']]),
+    hide_index=True, use_container_width=True
+)
+
+# Métricas Margem Custo Padrão
+total_nf_nova = df_mensal_nova_filtrado['Total NF Mensal'].sum()
+total_margem_nova = df_mensal_nova_filtrado['Margem Mensal'].sum()
+percentual_nova = (total_margem_nova / total_nf_nova * 100) if total_nf_nova != 0 else 0
+
+col1, col2, col3 = st.columns(3)
+with col1:
+    st.metric("Total NF", formatar_moeda_brasileira(total_nf_nova))
+with col2:
+    st.metric("Total Margem", formatar_moeda_brasileira(total_margem_nova))
+with col3:
+    st.metric("% Margem Total", f"{percentual_nova:.2f}%")
 
 # ========================
 # Exibição geral (todos os clientes) - OCULTO
