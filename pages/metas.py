@@ -153,3 +153,15 @@ with tab2:
                 st.error(f"Erro de conexão com a API: {e}")
             except Exception as e:
                 st.error(f"Ocorreu um erro inesperado: {e}")
+
+# ========================
+# Rodapé Padronizado
+# ========================
+st.markdown("---")
+st.markdown(f"""
+<div style='text-align: center; color: #666; padding: 20px;'>
+    <p><strong>Dashboard de Inteligência Comercial</strong></p>
+    <p>Período: 01/01/{datetime.now().year} a 31/12/{datetime.now().year}</p>
+    <p>Última atualização: {datetime.now().strftime('%d/%m/%Y %H:%M')}</p>
+</div>
+""", unsafe_allow_html=True)

@@ -81,6 +81,7 @@ def menu_autenticado():
     if is_admin():
         st.sidebar.subheader("Administração", divider=True)
         st.sidebar.page_link("pages/administrativo.py", label="Painel Administrativo", icon="🛠️")
+        st.sidebar.page_link("pages/margem_por_cliente.py", label="Margem por Cliente", icon="💰")
 
     # Menu de Gerentes
     if is_manager():
@@ -93,6 +94,8 @@ def menu_autenticado():
     st.sidebar.page_link("pages/clientes.py", label="Clientes", icon="👥")
     # Novo relatório regional
     st.sidebar.page_link("pages/relatorio_regional.py", label="Relatório Regional", icon="🗺️")
+    # Nova página de Inteligência Comercial
+    st.sidebar.page_link("pages/inteligencia_comercial.py", label="Inteligência Comercial", icon="🧠")
     
     # Relatórios exclusivos para Admin
     if is_admin():

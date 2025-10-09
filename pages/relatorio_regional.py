@@ -8,7 +8,7 @@ menu_with_redirect()
 import pandas as pd
 import plotly.express as px
 import requests
-from datetime import date
+from datetime import date, datetime
 from functools import lru_cache
 
 from functions.query import run_query  # Query detalhada existente
@@ -84,6 +84,14 @@ def variacao_percentual(serie: pd.Series) -> pd.Series:
 
 st.title('Relatório Regional')
 st.caption('Mapa de calor e indicadores de faturamento por Estado e Região.')
+
+# ⚠️ AVISO DE DESENVOLVIMENTO
+st.warning("""
+⚠️ **PÁGINA EM DESENVOLVIMENTO** ⚠️  
+Esta página ainda está em fase de desenvolvimento e testes.  
+**Os dados apresentados NÃO devem ser considerados para tomada de decisões.**  
+Aguarde a versão final para uso oficial.
+""")
 
 # ===========================================
 # LÓGICA DE ROLE/SETOR NO INÍCIO DO CÓDIGO
@@ -304,3 +312,15 @@ with tab2:
 
 with st.expander('Detalhe (amostra de linhas cruas do período selecionado)'):
 	st.dataframe(df_sel.head(200))
+
+# ========================
+# Rodapé Padronizado
+# ========================
+st.markdown("---")
+st.markdown(f"""
+<div style='text-align: center; color: #666; padding: 20px;'>
+	<p><strong>Dashboard de Inteligência Comercial</strong></p>
+	<p>Período: 01/01/{ano} a 31/12/{ano}</p>
+	<p>Última atualização: {datetime.now().strftime('%d/%m/%Y %H:%M')}</p>
+</div>
+""", unsafe_allow_html=True)

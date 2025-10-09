@@ -1527,3 +1527,15 @@ st.download_button(
     file_name=f"dados_detalhados_{meses[mes-1]}_{ano}.csv",
     mime="text/csv"
 )
+
+# ========================
+# Rodapé Padronizado
+# ========================
+st.markdown("---")
+st.markdown(f"""
+<div style='text-align: center; color: #666; padding: 20px;'>
+    <p><strong>Dashboard de Inteligência Comercial</strong></p>
+    <p>Período: 01/01/{ano} a 31/12/{ano}</p>
+    <p>Última atualização: {datetime.now().strftime('%d/%m/%Y %H:%M')}</p>
+</div>
+""", unsafe_allow_html=True)
