@@ -3,20 +3,6 @@ from functions.menu import menu_with_redirect
 st.set_page_config(layout="wide")
 menu_with_redirect()
 
-"""
-Página de Performance de Clientes
-Insights implementados (somente usando dados já disponíveis = 'OK'):
-1. Top 10 Clientes (R$) – faturamento bruto (sem segmentar direto vs revenda por falta de classificação)
-2. Novos x Recorrentes (mês selecionado)
-3. Taxa de Recompra (até o mês acumulado no ano)
-4. Frequência média de compra e recência média
-5. Clientes novos (acumulado YTD) x recorrentes
-6. Churn 3 e 6 meses (baseado na data de corte = fim do mês selecionado)
-7. Lista detalhada de clientes churned (3m / 6m) e Top 10
-
-Se no futuro houver campo para classificar cliente Direto/Revenda, podemos expandir.
-"""
-
 from datetime import datetime
 from calendar import monthrange
 import pandas as pd
@@ -473,3 +459,15 @@ if not df_vendas_ytd.empty:
     st.dataframe(clientes_ativos, hide_index=True)
 else:
     st.info("Sem clientes ativos no período.")
+
+# ========================
+# Rodapé Padronizado
+# ========================
+st.markdown("---")
+st.markdown(f"""
+<div style='text-align: center; color: #666; padding: 20px;'>
+    <p><strong>Dashboard de Inteligência Comercial</strong></p>
+    <p>Período: 01/01/{ano_sel} a 31/12/{ano_sel}</p>
+    <p>Última atualização: {datetime.now().strftime('%d/%m/%Y %H:%M')}</p>
+</div>
+""", unsafe_allow_html=True)

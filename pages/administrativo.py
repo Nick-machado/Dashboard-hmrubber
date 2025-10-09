@@ -4,6 +4,7 @@ import requests
 from functions.menu import menu_with_redirect
 from dotenv import load_dotenv
 import os
+from datetime import datetime
 
 load_dotenv()
 
@@ -204,3 +205,15 @@ with tab3:
                 st.error("Erro ao obter o ID do usuário selecionado.")
             else:
                 deletar_usuario(selected_user, selected_user_id)
+
+# ========================
+# Rodapé Padronizado
+# ========================
+st.markdown("---")
+st.markdown(f"""
+<div style='text-align: center; color: #666; padding: 20px;'>
+    <p><strong>Dashboard de Inteligência Comercial</strong></p>
+    <p>Período: 01/01/{datetime.now().year} a 31/12/{datetime.now().year}</p>
+    <p>Última atualização: {datetime.now().strftime('%d/%m/%Y %H:%M')}</p>
+</div>
+""", unsafe_allow_html=True)
